@@ -8,7 +8,14 @@ import PlatformAdminLayout from '../layouts/PlatformAdminLayout';
 import { ProtectedRoute } from './protectedRoutes';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 
-// Public pages
+// Marketing Pages
+const HomePage = lazy(() => import('@/features/marketing/pages/HomePage'));
+const AboutPage = lazy(() => import('@/features/marketing/pages/AboutPage'));
+const ContactPage = lazy(() => import('@/features/marketing/pages/ContactPage'));
+const PricingPage = lazy(() => import('@/features/marketing/pages/PricingPage'));
+const ImageUploadPage = lazy(() => import('@/features/marketing/pages/ImageUploadPage'));
+
+// Public Auth pages
 const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 const SignupPage = lazy(() => import('@/features/auth/pages/SignupPage'));
 const AuthCallbackPage = lazy(() => import('@/features/auth/pages/AuthCallbackPage'));
@@ -19,7 +26,7 @@ const DashboardPage = lazy(() => import('@/features/employee/pages/DashboardPage
 const DiscoverPage = lazy(() => import('@/features/activities/pages/DiscoverPage'));
 const ActivitiesPage = lazy(() => import('@/features/activities/pages/ActivitiesPage'));
 const ActivityDetailPage = lazy(() => import('@/features/activities/pages/ActivityDetailPage'));
-const ChallengesPage = lazy(() => import('@/features/challenges/pages/ChallengesPage')); // Employee challenges
+const ChallengesPage = lazy(() => import('@/features/challenges/pages/ChallengesPage'));
 const FeedPage = lazy(() => import('@/features/feed/pages/FeedPage'));
 const RewardsPage = lazy(() => import('@/features/rewards/pages/RewardsPage'));
 const WalletPage = lazy(() => import('@/features/points/pages/WalletPage'));
@@ -35,7 +42,7 @@ const AdminTeamsPage = lazy(() => import('@/features/company-admin/teams/pages/T
 const AdminDepartmentsPage = lazy(() => import('@/features/company-admin/departments/pages/DepartmentsPage'));
 const CategoryTypesPage = lazy(() => import('@/features/company-admin/activities/pages/CategoryTypesPage'));
 const AdminActivitiesPage = lazy(() => import('@/features/company-admin/activities/pages/ActivitiesPage'));
-const AdminChallengesPage = lazy(() => import('@/features/company-admin/challenges/pages/ChallengesPage')); // Admin challenges
+const AdminChallengesPage = lazy(() => import('@/features/company-admin/challenges/pages/ChallengesPage'));
 const AdminRewardsPage = lazy(() => import('@/features/company-admin/rewards/pages/RewardsPage'));
 const AdminLocationsPage = lazy(() => import('@/features/company-admin/locations/pages/LocationsPage'));
 const AdminAnalyticsPage = lazy(() => import('@/features/company-admin/analytics/pages/AnalyticsPage'));
@@ -70,7 +77,14 @@ export default function AppRouter() {
 
   return (
     <Routes>
-      {/* Public Routes */}
+      {/* Marketing Pages */}
+      <Route path="/" element={<LazyPage><HomePage /></LazyPage>} />
+      <Route path="/about" element={<LazyPage><AboutPage /></LazyPage>} />
+      <Route path="/contact" element={<LazyPage><ContactPage /></LazyPage>} />
+      <Route path="/pricing" element={<LazyPage><PricingPage /></LazyPage>} />
+      <Route path="/admin/upload-image" element={<LazyPage><ImageUploadPage /></LazyPage>} />
+
+      {/* Public Auth Routes */}
       <Route element={<PublicLayout />}>
         <Route 
           path="/login" 
@@ -104,7 +118,6 @@ export default function AppRouter() {
             </LazyPage>
           } 
         />
-        <Route path="/" element={<Navigate to="/app" replace />} />
       </Route>
 
       {/* Protected Employee Routes */}

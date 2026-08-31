@@ -4,26 +4,55 @@
 
 @layer base {
   :root {
+    /* Fun01K Color System */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
+    
+    /* Deep Navy / Midnight Primary */
+    --primary: 217.2 91.2% 22.4%;
+    --primary-foreground: 210 40% 98%;
+    
+    /* Accent - Restrained Blue/Indigo */
+    --accent: 221.2 83.2% 53.3%;
+    --accent-foreground: 210 40% 98%;
+    
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
+    
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+    
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --ring: 217.2 91.2% 22.4%;
+    
+    /* Sophisticated Radius System */
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+    --radius-3xl: 24px;
+    
+    /* Premium Shadow System */
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-sm: 0 4px 12px rgba(0,0,0,0.04);
+    --shadow-md: 0 8px 30px rgba(0,0,0,0.06);
+    --shadow-lg: 0 20px 60px rgba(0,0,0,0.08);
+    --shadow-xl: 0 40px 80px rgba(0,0,0,0.10);
+    
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 250ms ease;
+    --transition-slow: 350ms ease;
   }
 
   .dark {
@@ -51,38 +80,108 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
+  
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Premium Typography */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: hsl(var(--primary) / 0.15);
+    color: hsl(var(--foreground));
+  }
+
+  /* Focus States - Fixed */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: hsl(var(--muted));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
 }
 
-/* Focus styles */
-*:focus-visible {
-  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+@layer components {
+  /* Premium Button Styles */
+  .btn-primary {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    padding: 0.625rem 1.5rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    transition: all var(--transition-base);
+  }
+  
+  .btn-primary:hover {
+    background-color: hsl(var(--primary) / 0.9);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Product Card Styles */
+  .product-card {
+    border-radius: var(--radius-lg);
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    transition: all var(--transition-base);
+  }
+  
+  .product-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+
+  /* Enterprise Section Background */
+  .bg-enterprise {
+    background: linear-gradient(180deg, #06111F 0%, #0B1F33 100%);
+  }
+
+  /* Subtle Gradient Accent */
+  .accent-gradient {
+    background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+  }
 }
 
-/* Scrollbar styles */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-muted;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30 rounded-full;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
-}
-
-/* Selection styles */
-::selection {
-  @apply bg-primary/20 text-foreground;
+@layer utilities {
+  /* Premium Surface Layers */
+  .surface-1 {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+  }
+  
+  .surface-2 {
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+  }
+  
+  .surface-3 {
+    background: hsl(var(--primary) / 0.05);
+    border: 1px solid hsl(var(--primary) / 0.1);
+  }
 }
