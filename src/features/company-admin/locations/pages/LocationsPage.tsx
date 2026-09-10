@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
-import { useLocations, useCreateLocation, useUpdateLocation, useDeleteLocation } from '@/features/locations/queries/locationQueries';
+import { useLocations, useCreateLocation, useUpdateLocation, useDeleteLocation } from '@/features/company-admin/queries/locationQueries';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 
 export default function LocationsPage() {

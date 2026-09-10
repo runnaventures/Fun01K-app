@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
-import { useDepartments, useCreateDepartment, useUpdateDepartment, useDeleteDepartment } from '@/features/departments/queries/departmentQueries';
+import { useDepartments, useCreateDepartment, useUpdateDepartment, useDeleteDepartment } from '@/features/company-admin/departments/queries/departmentQueries';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 
 export default function DepartmentsPage() {

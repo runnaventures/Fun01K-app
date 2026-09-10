@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
-import { categoryTypeService } from '@/features/activities/services/categoryTypeService';
+import { categoryTypeService } from '@/features/shared/activities/services/categoryTypeService';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
-import type { ActivityCategory, ActivityType } from '@/features/activities/types/activity.types';
+import type { ActivityCategory, ActivityType } from '@/features/shared/activities/types/activity.types';
 
 export default function CategoryTypesPage() {
   const { user } = useAuth();

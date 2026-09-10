@@ -1,28 +1,30 @@
+// src/app/router/routeConfig.tsx
+
 import { lazy } from 'react';
 
 // Lazy load pages for better performance
 export const routeConfig = {
   // Public
-  login: lazy(() => import('@/features/auth/pages/LoginPage')),
-  signup: lazy(() => import('@/features/auth/pages/SignupPage')),
-  resetPassword: lazy(() => import('@/features/auth/pages/ResetPasswordPage')),
+  login: lazy(() => import('@/features/public/pages/LoginPage')),
+  signup: lazy(() => import('@/features/public/pages/SignupPage')),
+  resetPassword: lazy(() => import('@/features/public/pages/ResetPasswordPage')),
 
-  // Employee
+  // Employee (FIXED PATHS)
   dashboard: lazy(() => import('@/features/employee/pages/DashboardPage')),
-  discover: lazy(() => import('@/features/activities/pages/DiscoverPage')),
-  activities: lazy(() => import('@/features/activities/pages/ActivitiesPage')),
-  activityDetail: lazy(() => import('@/features/activities/pages/ActivityDetailPage')),
-  challenges: lazy(() => import('@/features/challenges/pages/ChallengesPage')),
-  feed: lazy(() => import('@/features/feed/pages/FeedPage')),
-  rewards: lazy(() => import('@/features/rewards/pages/RewardsPage')),
-  wallet: lazy(() => import('@/features/points/pages/WalletPage')),
-  leaderboard: lazy(() => import('@/features/leaderboards/pages/LeaderboardPage')),
-  activityHistory: lazy(() => import('@/features/activities/pages/ActivityHistoryPage')),
-  profile: lazy(() => import('@/features/profiles/pages/ProfilePage')),
-  notifications: lazy(() => import('@/features/notifications/pages/NotificationsPage')),
+  discover: lazy(() => import('@/features/employee/pages/DiscoverPage')),
+  activities: lazy(() => import('@/features/employee/pages/ActivitiesPage')),
+  activityDetail: lazy(() => import('@/features/employee/pages/ActivityDetailPage')),
+  activityHistory: lazy(() => import('@/features/employee/pages/ActivityHistoryPage')),
+  challenges: lazy(() => import('@/features/shared/challenges/pages/ChallengesPage')),
+  feed: lazy(() => import('@/features/shared/feed/pages/FeedPage')),
+  rewards: lazy(() => import('@/features/company-admin/pages/RewardsPage')),
+  wallet: lazy(() => import('@/features/employee/pages/WalletPage')),
+  leaderboard: lazy(() => import('@/features/employee/pages/LeaderboardPage')),
+  profile: lazy(() => import('@/features/employee/pages/ProfilePage')),
+  notifications: lazy(() => import('@/features/shared/notifications/pages/NotificationsPage')),
 
   // Company Admin
-  adminDashboard: lazy(() => import('@/features/company-admin/pages/DashboardPage')),
+  admindashboard: lazy(() => import('@/features/employee/pages/DashboardPage')),
   adminEmployees: lazy(() => import('@/features/company-admin/employees/pages/EmployeesPage')),
   adminTeams: lazy(() => import('@/features/company-admin/teams/pages/TeamsPage')),
   adminDepartments: lazy(() => import('@/features/company-admin/departments/pages/DepartmentsPage')),

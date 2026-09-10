@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
-import { useChallenges, useCreateChallenge, useUpdateChallenge, useDeleteChallenge } from '@/features/challenges/queries/challengeQueries';
+import { useChallenges, useCreateChallenge, useUpdateChallenge, useDeleteChallenge } from '@/features/shared/challenges/queries/challengeQueries';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
-import type { Challenge } from '@/features/challenges/types/challenge.types';
+import type { Challenge } from '@/features/shared/challenges/types/challenge.types';
 
 type ChallengeStatus = 'draft' | 'published' | 'active' | 'completed' | 'cancelled';
 type ChallengeType = 'individual' | 'team' | 'department' | 'company' | 'invite_only';

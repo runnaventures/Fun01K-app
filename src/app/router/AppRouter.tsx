@@ -1,4 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+// src/app/router/AppRouter.tsx
+
+import { Routes, Route } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { useAuth } from '../providers/AuthProvider';
 import PublicLayout from '../layouts/PublicLayout';
@@ -8,32 +10,40 @@ import PlatformAdminLayout from '../layouts/PlatformAdminLayout';
 import { ProtectedRoute } from './protectedRoutes';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 
+// ✅ Import platform components directly (not lazy-loaded)
+import { ActivitiesManager } from '@/features/platform-admin/components/ActivitiesManager/ActivitiesManager';
+import { RewardsManager } from '@/features/platform-admin/components/RewardsManager/RewardsManager';
+import { PlatformSettings } from '@/features/platform-admin/components/PlatformSettings/PlatformSettings';
+
 // Marketing Pages
-const HomePage = lazy(() => import('@/features/marketing/pages/HomePage'));
-const AboutPage = lazy(() => import('@/features/marketing/pages/AboutPage'));
-const ContactPage = lazy(() => import('@/features/marketing/pages/ContactPage'));
-const PricingPage = lazy(() => import('@/features/marketing/pages/PricingPage'));
-const ImageUploadPage = lazy(() => import('@/features/marketing/pages/ImageUploadPage'));
+const HomePage = lazy(() => import('@/features/public/pages/HomePage'));
+const AboutPage = lazy(() => import('@/features/public/pages/AboutPage'));
+const ContactPage = lazy(() => import('@/features/public/pages/ContactPage'));
+const PricingPage = lazy(() => import('@/features/public/pages/PricingPage'));
+const ImageUploadPage = lazy(() => import('@/features/public/pages/ImageUploadPage'));
 
 // Public Auth pages
-const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
-const SignupPage = lazy(() => import('@/features/auth/pages/SignupPage'));
-const AuthCallbackPage = lazy(() => import('@/features/auth/pages/AuthCallbackPage'));
-const ResetPasswordPage = lazy(() => import('@/features/auth/pages/ResetPasswordPage'));
+const LoginPage = lazy(() => import('@/features/public/pages/LoginPage'));
+const SignupPage = lazy(() => import('@/features/public/pages/SignupPage'));
+const AuthCallbackPage = lazy(() => import('@/features/public/pages/AuthCallbackPage'));
+const ResetPasswordPage = lazy(() => import('@/features/public/pages/ResetPasswordPage'));
 
-// Employee pages
+// Platform Login (Hidden - Not linked anywhere)
+const PlatformLoginPage = lazy(() => import('@/features/platform-admin/pages/PlatformLoginPage'));
+
+// ✅ Employee pages (FIXED PATHS)
 const DashboardPage = lazy(() => import('@/features/employee/pages/DashboardPage'));
-const DiscoverPage = lazy(() => import('@/features/activities/pages/DiscoverPage'));
-const ActivitiesPage = lazy(() => import('@/features/activities/pages/ActivitiesPage'));
-const ActivityDetailPage = lazy(() => import('@/features/activities/pages/ActivityDetailPage'));
-const ChallengesPage = lazy(() => import('@/features/challenges/pages/ChallengesPage'));
-const FeedPage = lazy(() => import('@/features/feed/pages/FeedPage'));
-const RewardsPage = lazy(() => import('@/features/rewards/pages/RewardsPage'));
-const WalletPage = lazy(() => import('@/features/points/pages/WalletPage'));
-const LeaderboardPage = lazy(() => import('@/features/leaderboards/pages/LeaderboardPage'));
-const ActivityHistoryPage = lazy(() => import('@/features/activities/pages/ActivityHistoryPage'));
-const ProfilePage = lazy(() => import('@/features/profiles/pages/ProfilePage'));
-const NotificationsPage = lazy(() => import('@/features/notifications/pages/NotificationsPage'));
+const DiscoverPage = lazy(() => import('@/features/employee/pages/DiscoverPage'));
+const ActivitiesPage = lazy(() => import('@/features/employee/pages/ActivitiesPage'));
+const ActivityDetailPage = lazy(() => import('@/features/employee/pages/ActivityDetailPage'));
+const ActivityHistoryPage = lazy(() => import('@/features/employee/pages/ActivityHistoryPage'));
+const ChallengesPage = lazy(() => import('@/features/shared/challenges/pages/ChallengesPage'));
+const FeedPage = lazy(() => import('@/features/shared/feed/pages/FeedPage'));
+const RewardsPage = lazy(() => import('@/features/company-admin/pages/RewardsPage'));
+const WalletPage = lazy(() => import('@/features/employee/pages/WalletPage'));
+const LeaderboardPage = lazy(() => import('@/features/employee/pages/LeaderboardPage'));
+const ProfilePage = lazy(() => import('@/features/employee/pages/ProfilePage'));
+const NotificationsPage = lazy(() => import('@/features/shared/notifications/pages/NotificationsPage'));
 
 // Company Admin pages
 const AdminDashboardPage = lazy(() => import('@/features/company-admin/pages/DashboardPage'));
@@ -47,20 +57,22 @@ const AdminRewardsPage = lazy(() => import('@/features/company-admin/rewards/pag
 const AdminLocationsPage = lazy(() => import('@/features/company-admin/locations/pages/LocationsPage'));
 const AdminAnalyticsPage = lazy(() => import('@/features/company-admin/analytics/pages/AnalyticsPage'));
 const AdminReportsPage = lazy(() => import('@/features/company-admin/reports/pages/ReportsPage'));
-const AdminSettingsPage = lazy(() => import('@/features/company-admin/settings/pages/SettingsPage'));
 const AdminPermissionsPage = lazy(() => import('@/features/company-admin/permissions/pages/PermissionsPage'));
 const AdminAuditPage = lazy(() => import('@/features/company-admin/audit/pages/AuditPage'));
+// ✅ Company Profile - imported for the profile route
+const CompanyProfilePage = lazy(() => import('@/features/company-admin/pages/CompanyProfilePage'));
+// ✅ Settings - using existing settings page from settings folder
+const AdminSettingsPage = lazy(() => import('@/features/company-admin/settings/pages/SettingsPage'));
 
-// Platform Admin pages
+// Platform Admin pages (lazy-loaded)
 const PlatformDashboardPage = lazy(() => import('@/features/platform-admin/pages/DashboardPage'));
 const PlatformOrganizationsPage = lazy(() => import('@/features/platform-admin/organizations/pages/OrganizationsPage'));
 const PlatformUsersPage = lazy(() => import('@/features/platform-admin/users/pages/UsersPage'));
-const PlatformActivitiesPage = lazy(() => import('@/features/platform-admin/activities/pages/ActivitiesPage'));
-const PlatformRewardsPage = lazy(() => import('@/features/platform-admin/rewards/pages/RewardsPage'));
 const PlatformAnalyticsPage = lazy(() => import('@/features/platform-admin/analytics/pages/AnalyticsPage'));
 const PlatformModerationPage = lazy(() => import('@/features/platform-admin/moderation/pages/ModerationPage'));
 const PlatformFraudPage = lazy(() => import('@/features/platform-admin/fraud/pages/FraudPage'));
-const PlatformSettingsPage = lazy(() => import('@/features/platform-admin/settings/pages/SettingsPage'));
+// ✅ Integrations - Only available to Platform Admin
+const PlatformIntegrationsPage = lazy(() => import('@/features/platform-admin/integrations/pages/IntegrationsPage'));
 const PlatformAuditPage = lazy(() => import('@/features/platform-admin/audit/pages/AuditPage'));
 
 // Wrapper component for lazy-loaded pages
@@ -86,39 +98,49 @@ export default function AppRouter() {
 
       {/* Public Auth Routes */}
       <Route element={<PublicLayout />}>
-        <Route 
-          path="/login" 
+        <Route
+          path="/login"
           element={
             <LazyPage>
               <LoginPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/signup" 
+        <Route
+          path="/signup"
           element={
             <LazyPage>
               <SignupPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/auth/callback" 
+        <Route
+          path="/auth/callback"
           element={
             <LazyPage>
               <AuthCallbackPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/auth/reset-password" 
+        <Route
+          path="/auth/reset-password"
           element={
             <LazyPage>
               <ResetPasswordPage />
             </LazyPage>
-          } 
+          }
         />
       </Route>
+
+      {/* ⚠️ HIDDEN PLATFORM LOGIN - NOT LINKED ANYWHERE ⚠️ */}
+      <Route
+        path="/platform-login"
+        element={
+          <LazyPage>
+            <PlatformLoginPage />
+          </LazyPage>
+        }
+      />
 
       {/* Protected Employee Routes */}
       <Route
@@ -128,101 +150,101 @@ export default function AppRouter() {
           </ProtectedRoute>
         }
       >
-        <Route 
-          path="/app" 
+        <Route
+          path="/app"
           element={
             <LazyPage>
               <DashboardPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/discover" 
+        <Route
+          path="/app/discover"
           element={
             <LazyPage>
               <DiscoverPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/activities" 
+        <Route
+          path="/app/activities"
           element={
             <LazyPage>
               <ActivitiesPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/activities/:id" 
+        <Route
+          path="/app/activities/:id"
           element={
             <LazyPage>
               <ActivityDetailPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/challenges" 
+        <Route
+          path="/app/challenges"
           element={
             <LazyPage>
               <ChallengesPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/feed" 
+        <Route
+          path="/app/feed"
           element={
             <LazyPage>
               <FeedPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/rewards" 
+        <Route
+          path="/app/rewards"
           element={
             <LazyPage>
               <RewardsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/wallet" 
+        <Route
+          path="/app/wallet"
           element={
             <LazyPage>
               <WalletPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/leaderboard" 
+        <Route
+          path="/app/leaderboard"
           element={
             <LazyPage>
               <LeaderboardPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/activity-history" 
+        <Route
+          path="/app/activity-history"
           element={
             <LazyPage>
               <ActivityHistoryPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/profile" 
+        <Route
+          path="/app/profile"
           element={
             <LazyPage>
               <ProfilePage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/app/notifications" 
+        <Route
+          path="/app/notifications"
           element={
             <LazyPage>
               <NotificationsPage />
             </LazyPage>
-          } 
+          }
         />
       </Route>
 
@@ -234,121 +256,131 @@ export default function AppRouter() {
           </ProtectedRoute>
         }
       >
-        <Route 
-          path="/admin" 
+        <Route
+          path="/admin"
           element={
             <LazyPage>
               <AdminDashboardPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/employees" 
+        <Route
+          path="/admin/employees"
           element={
             <LazyPage>
               <AdminEmployeesPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/teams" 
+        <Route
+          path="/admin/teams"
           element={
             <LazyPage>
               <AdminTeamsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/departments" 
+        <Route
+          path="/admin/departments"
           element={
             <LazyPage>
               <AdminDepartmentsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/categories" 
+        <Route
+          path="/admin/categories"
           element={
             <LazyPage>
               <CategoryTypesPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/activities" 
+        <Route
+          path="/admin/activities"
           element={
             <LazyPage>
               <AdminActivitiesPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/challenges" 
+        <Route
+          path="/admin/challenges"
           element={
             <LazyPage>
               <AdminChallengesPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/rewards" 
+        <Route
+          path="/admin/rewards"
           element={
             <LazyPage>
               <AdminRewardsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/locations" 
+        <Route
+          path="/admin/locations"
           element={
             <LazyPage>
               <AdminLocationsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/analytics" 
+        <Route
+          path="/admin/analytics"
           element={
             <LazyPage>
               <AdminAnalyticsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/reports" 
+        <Route
+          path="/admin/reports"
           element={
             <LazyPage>
               <AdminReportsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/settings" 
+        {/* ✅ Company Profile - accessible from header */}
+        <Route
+          path="/admin/profile"
+          element={
+            <LazyPage>
+              <CompanyProfilePage />
+            </LazyPage>
+          }
+        />
+        {/* ✅ Settings - using existing settings page */}
+        <Route
+          path="/admin/settings"
           element={
             <LazyPage>
               <AdminSettingsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/permissions" 
+        <Route
+          path="/admin/permissions"
           element={
             <LazyPage>
               <AdminPermissionsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/admin/audit" 
+        <Route
+          path="/admin/audit"
           element={
             <LazyPage>
               <AdminAuditPage />
             </LazyPage>
-          } 
+          }
         />
       </Route>
 
-      {/* Platform Admin Routes */}
+      {/* ✅ Platform Admin Routes - Includes Integrations */}
       <Route
         element={
           <ProtectedRoute requiredRoles={['platform_owner', 'platform_admin']}>
@@ -356,91 +388,97 @@ export default function AppRouter() {
           </ProtectedRoute>
         }
       >
-        <Route 
-          path="/platform" 
+        <Route
+          path="/platform"
           element={
             <LazyPage>
               <PlatformDashboardPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/organizations" 
+        <Route
+          path="/platform/organizations"
           element={
             <LazyPage>
               <PlatformOrganizationsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/users" 
+        <Route
+          path="/platform/users"
           element={
             <LazyPage>
               <PlatformUsersPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/activities" 
-          element={
-            <LazyPage>
-              <PlatformActivitiesPage />
-            </LazyPage>
-          } 
+
+        {/* ✅ Activities - Using ActivitiesManager (full implementation) */}
+        <Route
+          path="/platform/activities"
+          element={<ActivitiesManager />}
         />
-        <Route 
-          path="/platform/rewards" 
-          element={
-            <LazyPage>
-              <PlatformRewardsPage />
-            </LazyPage>
-          } 
+
+        {/* ✅ Rewards - Using RewardsManager (full implementation) */}
+        <Route
+          path="/platform/rewards"
+          element={<RewardsManager />}
         />
-        <Route 
-          path="/platform/analytics" 
+
+        <Route
+          path="/platform/analytics"
           element={
             <LazyPage>
               <PlatformAnalyticsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/moderation" 
+        <Route
+          path="/platform/moderation"
           element={
             <LazyPage>
               <PlatformModerationPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/fraud" 
+        <Route
+          path="/platform/fraud"
           element={
             <LazyPage>
               <PlatformFraudPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/settings" 
+
+        {/* ✅ Integrations - Only available to Platform Admin */}
+        <Route
+          path="/platform/integrations"
           element={
             <LazyPage>
-              <PlatformSettingsPage />
+              <PlatformIntegrationsPage />
             </LazyPage>
-          } 
+          }
         />
-        <Route 
-          path="/platform/audit" 
+
+        {/* ✅ Settings - Using PlatformSettings (full implementation) */}
+        <Route
+          path="/platform/settings"
+          element={<PlatformSettings />}
+        />
+
+        <Route
+          path="/platform/audit"
           element={
             <LazyPage>
               <PlatformAuditPage />
             </LazyPage>
-          } 
+          }
         />
       </Route>
 
       {/* 404 */}
-      <Route 
-        path="*" 
+      <Route
+        path="*"
         element={
           <div className="flex min-h-screen items-center justify-center">
             <div className="text-center">
@@ -448,7 +486,7 @@ export default function AppRouter() {
               <p className="mt-2 text-muted-foreground">Page not found</p>
             </div>
           </div>
-        } 
+        }
       />
     </Routes>
   );

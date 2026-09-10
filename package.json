@@ -18,16 +18,21 @@
     "supabase:seed": "supabase db seed"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-slot": "^1.3.3",
+    "@radix-ui/react-switch": "^1.3.7",
+    "@radix-ui/react-tabs": "^1.1.21",
     "@supabase/supabase-js": "^2.39.0",
     "@tanstack/react-query": "^5.12.0",
     "@tanstack/react-query-devtools": "^5.12.0",
-    "clsx": "^2.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "express": "^5.2.1",
-    "lucide-react": "^1.38.0",
+    "lucide-react": "^1.39.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
-    "tailwind-merge": "^2.1.0",
+    "tailwind-merge": "^2.6.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

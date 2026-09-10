@@ -3,7 +3,7 @@ import { AdminNavigation } from '@/components/layout/AdminNavigation';
 
 export default function CompanyAdminLayout() {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen flex flex-col bg-background">
       <AdminNavigation type="company" />
       <main className="flex-1 container mx-auto px-4 py-8">
         <Outlet />

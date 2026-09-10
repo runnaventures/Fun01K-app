@@ -1,29 +1,34 @@
-import { cn } from '@/lib/utils';
-import { ReactNode, ButtonHTMLAttributes } from 'react';
+// src/components/ui/Button.tsx
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'default';
+import { ReactNode } from 'react';
+
+interface ButtonProps {
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'default' | 'success';
   size?: 'sm' | 'md' | 'lg';
+  children: ReactNode;
   className?: string;
-  asChild?: boolean;
+  type?: 'button' | 'submit' | 'reset';
+  disabled?: boolean;
+  onClick?: () => void;
 }
 
-export function Button({
-  children,
-  variant = 'primary',
-  size = 'md',
-  className,
+export function Button({ 
+  variant = 'default', 
+  size = 'md', 
+  children, 
+  className = '', 
   type = 'button',
-  ...props
+  disabled = false,
+  onClick 
 }: ButtonProps) {
   const variantClasses = {
-    primary: 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
+    default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    primary: 'bg-primary text-primary-foreground hover:bg-primary/90',
     secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
     outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
     ghost: 'hover:bg-accent hover:text-accent-foreground',
     destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-    default: 'bg-foreground text-background hover:bg-foreground/90 shadow-sm',
+    success: 'bg-green-600 text-white hover:bg-green-700',
   };
 
   const sizeClasses = {
@@ -35,13 +40,9 @@ export function Button({
   return (
     <button
       type={type}
-      className={cn(
-        'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
-        variantClasses[variant],
-        sizeClasses[size],
-        className
-      )}
-      {...props}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
     >
       {children}
     </button>

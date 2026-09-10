@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useOrganizations, useCreateOrganization, useUpdateOrganization } from '@/features/organizations/queries/organizationQueries';
+import { useOrganizations, useCreateOrganization, useUpdateOrganization } from '@/features/platform-admin/organizations/queries/organizationQueries';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 
 export default function OrganizationsPage() {
