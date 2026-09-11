@@ -1,4 +1,4 @@
-// src/features/activities/components/EmployeeFeaturedFeed.tsx
+// src/features/shared/activities/components/EmployeeFeaturedFeed.tsx
 
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/Input';
@@ -40,21 +40,22 @@ export function EmployeeFeaturedFeed({
     try {
       const data = await loadActivities();
       let filtered = data;
-      
+
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        filtered = filtered.filter(a => 
-          a.title.toLowerCase().includes(term) || 
-          (a.description?.toLowerCase() || '').includes(term)
+        filtered = filtered.filter(
+          (a) =>
+            a.title.toLowerCase().includes(term) ||
+            (a.description?.toLowerCase() || '').includes(term)
         );
       }
-      
+
       if (selectedDomain !== 'All' && selectedDomain !== 'Completed') {
-        filtered = filtered.filter(a => 
-          a.category?.name?.toLowerCase() === selectedDomain.toLowerCase()
+        filtered = filtered.filter(
+          (a) => a.category?.name?.toLowerCase() === selectedDomain.toLowerCase()
         );
       }
-      
+
       setActivities(filtered);
     } catch (error) {
       console.error('Error fetching featured activities:', error);
@@ -65,7 +66,11 @@ export function EmployeeFeaturedFeed({
   };
 
   const handleDetails = (activity: Activity) => {
-    alert(`📋 ${activity.title}\n\n${activity.description || 'No description'}\n\n📍 ${activity.location || 'Global'}\n⭐ ${activity.points} PTS`);
+    alert(
+      `📋 ${activity.title}\n\n${activity.description || 'No description'}\n\n📍 ${
+        activity.location || 'Global'
+      }\n⭐ ${activity.points} PTS`
+    );
   };
 
   const handleJoin = (activityId: string) => {
@@ -85,20 +90,25 @@ export function EmployeeFeaturedFeed({
     return <LoadingScreen />;
   }
 
+  // ✅ Outer wrapper: space-y-6, NOT a grid — so header/search/filters stack above the activities
   return (
     <div className="space-y-6">
       {/* Featured Hub Header */}
       <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl p-6 border border-primary/10">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl font-bold">Featured Hub</h2>
             <p className="text-sm text-muted-foreground">
               {activities.length} Activities Available • {activities.length} Total Curated
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-muted-foreground">Company Featured Activities & Events</p>
-            <p className="text-xs text-muted-foreground">Join coworker-hosted workshops, wellness meetups, and team gatherings</p>
+          <div className="text-right max-w-md">
+            <p className="text-xs text-muted-foreground">
+              Company Featured Activities &amp; Events
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Join coworker-hosted workshops, wellness meetups, and team gatherings
+            </p>
           </div>
         </div>
       </div>
@@ -106,7 +116,11 @@ export function EmployeeFeaturedFeed({
       {/* Search */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1">
-          <LucideIcon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <LucideIcon
+            name="Search"
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -135,16 +149,16 @@ export function EmployeeFeaturedFeed({
         ))}
       </div>
 
-      {/* Activities Grid */}
+      {/* Activities Grid — this is the only grid */}
       {activities.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p className="text-lg">No featured activities found</p>
           <p className="text-sm">Check back later for company featured activities</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {activities.map((activity) => {
-            const interestMatch = userInterests.some((interest: string) => 
+            const interestMatch = userInterests.some((interest: string) =>
               activity.interest_tags?.includes(interest)
             );
             const spotlight = isSpotlight(activity);

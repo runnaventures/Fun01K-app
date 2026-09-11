@@ -1,4 +1,4 @@
-﻿// src/features/platform-admin/components/ActivitiesManager/AddActivityDialog.tsx
+// src/features/platform-admin/components/ActivitiesManager/AddActivityDialog.tsx
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -12,17 +12,36 @@ interface AddActivityDialogProps {
   children: React.ReactNode;
 }
 
-// Default categories for fallback
-const DEFAULT_CATEGORIES = [
-  { id: 'sports', name: 'Sports' },
-  { id: 'wellness', name: 'Wellness' },
-  { id: 'learning', name: 'Learning' },
-  { id: 'social', name: 'Social' },
-  { id: 'creative', name: 'Creative' },
-  { id: 'professional', name: 'Professional' },
-  { id: 'community', name: 'Community' },
-  { id: 'outdoor', name: 'Outdoor' },
-  { id: 'hobby', name: 'Hobby' },
+// Category options with icons
+const CATEGORIES = [
+  { value: 'Sports', icon: '⚽' },
+  { value: 'Wellness', icon: '🧘' },
+  { value: 'Learning', icon: '📚' },
+  { value: 'Social', icon: '🤝' },
+  { value: 'Creative', icon: '🎨' },
+  { value: 'Professional', icon: '💼' },
+  { value: 'Community', icon: '🌍' },
+  { value: 'Outdoor', icon: '🏔️' },
+  { value: 'Hobby', icon: '🎯' },
+];
+
+// Icon themes for activities
+const ICON_THEMES = [
+  { value: 'Board / Dice Games', icon: '🎲' },
+  { value: 'Sports / Fitness', icon: '🏃' },
+  { value: 'Art / Music', icon: '🎨' },
+  { value: 'Food / Drink', icon: '🍽️' },
+  { value: 'Tech / Coding', icon: '💻' },
+  { value: 'Reading / Books', icon: '📚' },
+  { value: 'Movies / Entertainment', icon: '🎬' },
+  { value: 'Gardening / Nature', icon: '🌱' },
+  { value: 'Yoga / Meditation', icon: '🧘' },
+  { value: 'Cooking / Baking', icon: '👨‍🍳' },
+  { value: 'Photography', icon: '📷' },
+  { value: 'Music / Instruments', icon: '🎸' },
+  { value: 'Dance / Movement', icon: '💃' },
+  { value: 'Writing / Journaling', icon: '✍️' },
+  { value: 'Crafts / DIY', icon: '🧶' },
 ];
 
 export function AddActivityDialog({ onActivityCreated, children }: AddActivityDialogProps) {
@@ -35,7 +54,7 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Categories from database
-  const [categories, setCategories] = useState<{id: string, name: string}[]>(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState<{id: string, name: string, icon: string}[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
@@ -44,6 +63,7 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
     points: 40,
     capacity: 12,
     category_id: '',
+    icon_theme: 'Board / Dice Games',
     start_date: '',
     start_time: '',
     end_time: '',
@@ -68,16 +88,39 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
     try {
       const { data, error } = await supabase
         .from('activity_categories')
-        .select('id, name')
+        .select('id, name, icon')
         .order('name');
       
       if (error) throw error;
       
       if (data && data.length > 0) {
         setCategories(data);
+        // Set default category if not already set
+        if (!formData.category_id && data.length > 0) {
+          setFormData(prev => ({ ...prev, category_id: data[0].id }));
+        }
+      } else {
+        // Use default categories if none in database
+        setCategories(DEFAULT_CATEGORIES.map(c => ({ 
+          id: c.value, 
+          name: c.value, 
+          icon: c.icon || '📌' 
+        })));
+        if (!formData.category_id) {
+          setFormData(prev => ({ ...prev, category_id: DEFAULT_CATEGORIES[0].value }));
+        }
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
+      // Fallback to default categories
+      setCategories(DEFAULT_CATEGORIES.map(c => ({ 
+        id: c.value, 
+        name: c.value, 
+        icon: c.icon || '📌' 
+      })));
+      if (!formData.category_id) {
+        setFormData(prev => ({ ...prev, category_id: DEFAULT_CATEGORIES[0].value }));
+      }
     }
   };
 
@@ -165,6 +208,12 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
         return;
       }
 
+      if (!formData.category_id) {
+        setError('Please select a category');
+        setIsLoading(false);
+        return;
+      }
+
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id || null;
 
@@ -202,17 +251,14 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         difficulty: 'easy',
+        category_id: formData.category_id,
         completion_limit: formData.capacity || null,
         location: formData.location || null,
+        interest_tags: formData.icon_theme ? [formData.icon_theme] : [],
         source: 'manual',
         is_featured: true,
         featured_at: new Date().toISOString(),
       };
-
-      // Only add category_id if selected (optional)
-      if (formData.category_id) {
-        activityData.category_id = formData.category_id;
-      }
 
       const { data, error } = await supabase
         .from('activities')
@@ -257,7 +303,8 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
       description: '',
       points: 40,
       capacity: 12,
-      category_id: '',
+      category_id: categories.length > 0 ? categories[0].id : '',
+      icon_theme: 'Board / Dice Games',
       start_date: '',
       start_time: '',
       end_time: '',
@@ -275,24 +322,37 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
     setIsOpen(false);
   };
 
-  // Format time for display (e.g., 5:30 PM)
-  const formatTimeDisplay = (time: string) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const h = parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    return `${h12}:${minutes} ${ampm}`;
+  const getCategoryIcon = (categoryId: string) => {
+    const found = categories.find(c => c.id === categoryId);
+    return found?.icon || '📌';
   };
+
+  const getCategoryName = (categoryId: string) => {
+    const found = categories.find(c => c.id === categoryId);
+    return found?.name || 'Category';
+  };
+
+  // Default categories for fallback
+  const DEFAULT_CATEGORIES = [
+    { value: 'Sports', icon: '⚽' },
+    { value: 'Wellness', icon: '🧘' },
+    { value: 'Learning', icon: '📚' },
+    { value: 'Social', icon: '🤝' },
+    { value: 'Creative', icon: '🎨' },
+    { value: 'Professional', icon: '💼' },
+    { value: 'Community', icon: '🌍' },
+    { value: 'Outdoor', icon: '🏔️' },
+    { value: 'Hobby', icon: '🎯' },
+  ];
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="max-w-5xl p-0 overflow-hidden max-h-[85vh] bg-white">
+      <DialogContent className="max-w-2xl p-0 overflow-hidden max-h-[95vh] bg-white">
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 px-6 py-4">
+        <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
@@ -317,8 +377,8 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
           </div>
         </div>
 
-        {/* Form Body - Landscape Layout */}
-        <div className="px-6 py-5 overflow-y-auto max-h-[calc(85vh-120px)]">
+        {/* Form Body */}
+        <div className="px-6 py-5 overflow-y-auto max-h-[calc(95vh-140px)]">
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5">
               <LucideIcon name="AlertCircle" size={16} className="text-red-500 shrink-0 mt-0.5" />
@@ -336,55 +396,54 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-            {/* Row 1: Activity Name + Category */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Activity Name <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                    <LucideIcon name="FileText" size={16} />
-                  </div>
-                  <Input
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    placeholder="e.g., Wednesday Waterfront Run"
-                    className="pl-9 py-2.5 text-sm border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    required
-                  />
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Activity Name */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Activity Name <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="FileText" size={16} />
                 </div>
+                <Input
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="e.g., Wednesday Waterfront Run"
+                  className="pl-9 py-2.5 text-sm border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  required
+                />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Category <span className="text-xs font-normal text-slate-400">(optional)</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                    <LucideIcon name="Tag" size={16} />
-                  </div>
-                  <select
-                    value={formData.category_id}
-                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                    className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
-                  >
-                    <option value="">Select a category (optional)</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                    <LucideIcon name="ChevronDown" size={16} />
-                  </div>
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Category <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <span className="text-lg">{getCategoryIcon(formData.category_id)}</span>
+                </div>
+                <select
+                  value={formData.category_id}
+                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                  className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
+                >
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.icon || '📌'} {cat.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                  <LucideIcon name="ChevronDown" size={16} />
                 </div>
               </div>
             </div>
 
-            {/* Row 2: Description */}
-            <div className="mb-4">
+            {/* Description */}
+            <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                 Description
               </label>
@@ -396,13 +455,13 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   placeholder="Tell employees why they should participate, what to expect, and details on how hobbies or socialization is stimulated."
-                  className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all min-h-[80px] resize-y"
+                  className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all min-h-[100px] resize-y"
                 />
               </div>
             </div>
 
-            {/* Row 3: Points + Capacity */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* Points & Capacity */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                   Points Reward <span className="text-red-500">*</span>
@@ -440,11 +499,37 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
               </div>
             </div>
 
-            {/* Row 4: Date + Hours / Time Range */}
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            {/* Icon Theme */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Icon Theme
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="Smile" size={16} />
+                </div>
+                <select
+                  value={formData.icon_theme}
+                  onChange={(e) => setFormData({ ...formData, icon_theme: e.target.value })}
+                  className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
+                >
+                  {ICON_THEMES.map((theme) => (
+                    <option key={theme.value} value={theme.value}>
+                      {theme.icon} {theme.value}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                  <LucideIcon name="ChevronDown" size={16} />
+                </div>
+              </div>
+            </div>
+
+            {/* Schedule */}
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Schedule Date
+                  Date
                 </label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -460,7 +545,7 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Hours / Time <span className="text-xs font-normal text-slate-400">(e.g. 5:30 PM - 7:00 PM)</span>
+                  Start Time
                 </label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -476,7 +561,7 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  To
+                  End Time
                 </label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -487,57 +572,56 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
                     value={formData.end_time}
                     onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                     className="pl-9 py-2.5 text-sm border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    placeholder="End time"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Row 5: Location + Organization */}
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Location / Room <span className="text-xs font-normal text-slate-400">(e.g. Lounge B or search address)</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                    <LucideIcon name="MapPin" size={16} />
-                  </div>
-                  <Input
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="e.g., Lounge B or search address"
-                    className="pl-9 py-2.5 text-sm border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                  />
+            {/* Location / Room */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Location / Room
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="MapPin" size={16} />
                 </div>
+                <Input
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="e.g., Lounge B or search address"
+                  className="pl-9 py-2.5 text-sm border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                />
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Organization <span className="text-xs font-normal text-slate-400">(optional - leave empty for global)</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                    <LucideIcon name="Building2" size={16} />
-                  </div>
-                  <select
-                    value={formData.organization_id}
-                    onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
-                    className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
-                  >
-                    <option value="">🌍 Global - All Organizations</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>🏢 {org.name}</option>
-                    ))}
-                  </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                    <LucideIcon name="ChevronDown" size={16} />
-                  </div>
+            </div>
+
+            {/* Organization */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Organization <span className="text-xs font-normal text-slate-400">(optional - leave empty for global)</span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                  <LucideIcon name="Building2" size={16} />
+                </div>
+                <select
+                  value={formData.organization_id}
+                  onChange={(e) => setFormData({ ...formData, organization_id: e.target.value })}
+                  className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="">🌍 Global - All Organizations</option>
+                  {organizations.map((org) => (
+                    <option key={org.id} value={org.id}>🏢 {org.name}</option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                  <LucideIcon name="ChevronDown" size={16} />
                 </div>
               </div>
             </div>
 
-            {/* Row 6: Image Upload */}
-            <div className="mb-4">
+            {/* Image Upload */}
+            <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                 Activity Image <span className="text-xs font-normal text-slate-400">(optional)</span>
               </label>
@@ -591,7 +675,7 @@ export function AddActivityDialog({ onActivityCreated, children }: AddActivityDi
                 type="button"
                 variant="outline"
                 onClick={handleClose}
-                className="px-6 py-2.5"
+                className="px-6"
               >
                 Cancel
               </Button>

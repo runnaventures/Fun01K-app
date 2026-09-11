@@ -1,29 +1,40 @@
-// src/features/activities/components/EmployeePlacesFeed.tsx
+// src/features/shared/activities/components/EmployeePlacesFeed.tsx
 
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { LucideIcon } from '@/components/ui/LucideIcon';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 import { EmployeeActivityCard } from './EmployeeActivityCard';
 import { Activity } from '../types/activity.types';
 
 interface EmployeePlacesFeedProps {
-  loadActivities: (searchTerm?: string, selectedCity?: string, venueType?: string) => Promise<Activity[]>;
-  onJoinActivity?: (activityId: string) => void;  // ✅ Added this
+  loadActivities: (
+    searchTerm?: string,
+    selectedCity?: string,
+    venueType?: string
+  ) => Promise<Activity[]>;
+  onJoinActivity?: (activityId: string) => void;
   onFlagActivity?: (activityId: string, reason: string) => void;
   userInterests?: string[];
   organizationId?: string;
   joinedActivityIds?: string[];
 }
 
-const CITIES = ['Atlanta', 'San Francisco', 'New York', 'Austin', 'Seattle', 'Chicago', 'All Cities'];
+const CITIES = [
+  'Atlanta',
+  'San Francisco',
+  'New York',
+  'Austin',
+  'Seattle',
+  'Chicago',
+  'All Cities',
+];
 const VENUE_TYPES = ['All', 'Wellness', 'Sports', 'Social', 'Hobby', 'Learning'];
 
 export function EmployeePlacesFeed({
   loadActivities,
-  onJoinActivity,  // ✅ Added this
+  onJoinActivity,
   onFlagActivity,
   userInterests = [],
   joinedActivityIds = [],
@@ -61,7 +72,11 @@ export function EmployeePlacesFeed({
   };
 
   const handleDetails = (activity: Activity) => {
-    alert(`📋 ${activity.title}\n\n${activity.description || 'No description'}\n\n📍 ${activity.location || 'Global'}\n⭐ ${activity.points} PTS`);
+    alert(
+      `📋 ${activity.title}\n\n${activity.description || 'No description'}\n\n📍 ${
+        activity.location || 'Global'
+      }\n⭐ ${activity.points} PTS`
+    );
   };
 
   const isSpotlight = (activity: Activity) => {
@@ -72,22 +87,31 @@ export function EmployeePlacesFeed({
     return <LoadingScreen />;
   }
 
+  // ✅ Outer wrapper: space-y-6
   return (
     <div className="space-y-6">
       {/* Places Hub Header */}
       <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-xl p-6 border border-blue-200/20">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-xl font-bold">Places Hub</h2>
-            <p className="text-sm text-muted-foreground">{selectedCity} • {activities.length} Venues Pinned</p>
-            <p className="text-xs text-muted-foreground mt-1">Places & Venue Discovery — Explore local venues and join activities!</p>
+            <p className="text-sm text-muted-foreground">
+              {selectedCity} • {activities.length} Venues Pinned
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Places &amp; Venue Discovery — Explore local venues and join activities!
+            </p>
           </div>
         </div>
       </div>
 
       {/* Search */}
       <div className="relative">
-        <LucideIcon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <LucideIcon
+          name="Search"
+          size={18}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
         <Input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -114,7 +138,9 @@ export function EmployeePlacesFeed({
 
       {/* Venue Type Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground mr-1">Venue Type:</span>
+        <span className="text-xs font-medium text-muted-foreground mr-1">
+          Venue Type:
+        </span>
         {VENUE_TYPES.map((type) => (
           <Button
             key={type}
@@ -128,16 +154,16 @@ export function EmployeePlacesFeed({
         ))}
       </div>
 
-      {/* Places Grid */}
+      {/* Places Grid — the only grid */}
       {activities.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p className="text-lg">No places discovered yet</p>
           <p className="text-sm">Explore local venues and join activities</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {activities.map((activity) => {
-            const interestMatch = userInterests.some((interest: string) => 
+            const interestMatch = userInterests.some((interest: string) =>
               activity.interest_tags?.includes(interest)
             );
             const spotlight = isSpotlight(activity);

@@ -12,9 +12,6 @@ import { supabase } from '@/lib/supabase';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 import { getInitials } from '@/lib/utils';
 import {
-  Bell,
-  Coins,
-  Crown,
   MapPin,
   Star,
   ArrowRight,
@@ -22,6 +19,7 @@ import {
   Clock,
   Sparkles,
   Medal,
+  Coins,
 } from 'lucide-react';
 
 /* -------------------------------------------------------------------------- */
@@ -269,8 +267,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome banner with chips inside */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 rounded-2xl border bg-card px-6 py-5 shadow-sm">
+      {/* Welcome banner — pure greeting, no chips */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border bg-card px-6 py-5 shadow-sm">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">
             Welcome back, {firstName}! 👋
@@ -286,13 +284,8 @@ export default function DashboardPage() {
               <>Broaden your ties across departments of your workspace.</>
             )}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Chip icon={Bell} label="1h Reminders" badge="FEATURED" />
-            <Chip icon={Coins} label={`${points} Spending Tokens`} variant="success" />
-            <Chip icon={Crown} label={`Lvl ${level} • ${firstName}`} variant="violet" />
-          </div>
         </div>
-        <div className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 self-start">
+        <div className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 self-start sm:self-center">
           {avatarUrl ? (
             <img src={avatarUrl} alt="You" className="h-10 w-10 rounded-full object-cover" />
           ) : (
@@ -630,40 +623,5 @@ export default function DashboardPage() {
         </section>
       </div>
     </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*                             Sub-components                                  */
-/* -------------------------------------------------------------------------- */
-
-function Chip({
-  icon: Icon,
-  label,
-  badge,
-  variant = 'default',
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  badge?: string;
-  variant?: 'default' | 'success' | 'violet';
-}) {
-  const styles: Record<string, string> = {
-    default: 'border bg-background text-foreground',
-    success: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
-    violet: 'border border-violet-200 bg-violet-50 text-violet-700',
-  };
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold ${styles[variant]}`}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-      {badge && (
-        <span className="rounded-md bg-amber-400/90 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-950">
-          {badge}
-        </span>
-      )}
-    </span>
   );
 }

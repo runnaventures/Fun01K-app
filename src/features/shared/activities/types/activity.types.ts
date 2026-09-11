@@ -37,6 +37,8 @@ export interface Activity {
   is_global?: boolean;
   is_featured_by_company?: boolean;
   difficulty?: string;
+  location_city?: string | null;
+  host_name?: string | null;
 }
 
 export interface ActivityCategory {

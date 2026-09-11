@@ -1,4 +1,4 @@
-﻿// src/features/activities/components/EmployeeSocialFeed.tsx
+// src/features/shared/activities/components/EmployeeSocialFeed.tsx
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -13,7 +13,11 @@ import { EmployeeActivityCard } from './EmployeeActivityCard';
 import { Activity } from '../types/activity.types';
 
 interface EmployeeSocialFeedProps {
-  loadActivities?: (searchTerm?: string, selectedCity?: string, selectedDomain?: string) => Promise<Activity[]>;
+  loadActivities?: (
+    searchTerm?: string,
+    selectedCity?: string,
+    selectedDomain?: string
+  ) => Promise<Activity[]>;
   onJoinActivity?: (activityId: string) => void;
   onFlagActivity?: (activityId: string, reason: string) => void;
   userInterests?: string[];
@@ -21,13 +25,24 @@ interface EmployeeSocialFeedProps {
   joinedActivityIds?: string[];
 }
 
-const CITIES = ['Atlanta', 'San Francisco', 'New York', 'Austin', 'Seattle', 'Chicago', 'Denver', 'London', 'Remote/Virtual', 'All Cities'];
+const CITIES = [
+  'Atlanta',
+  'San Francisco',
+  'New York',
+  'Austin',
+  'Seattle',
+  'Chicago',
+  'Denver',
+  'London',
+  'Remote/Virtual',
+  'All Cities',
+];
 const DOMAINS = ['All', 'Learning', 'Sports', 'Wellness', 'Hobby', 'Social'];
 
-export function EmployeeSocialFeed({ 
-  loadActivities, 
-  onJoinActivity, 
-  onFlagActivity, 
+export function EmployeeSocialFeed({
+  loadActivities,
+  onJoinActivity,
+  onFlagActivity,
   userInterests = [],
   joinedActivityIds = [],
 }: EmployeeSocialFeedProps) {
@@ -53,7 +68,7 @@ export function EmployeeSocialFeed({
     setIsLoading(true);
     try {
       const organizationId = organizationMember?.organization_id;
-      
+
       let query = supabase
         .from('activities')
         .select('*')
@@ -66,7 +81,9 @@ export function EmployeeSocialFeed({
       }
 
       if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+        query = query.or(
+          `title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`
+        );
       }
 
       if (selectedDomain !== 'All') {
@@ -75,7 +92,7 @@ export function EmployeeSocialFeed({
           .select('id')
           .ilike('name', `%${selectedDomain}%`)
           .maybeSingle();
-        
+
         if (categoryData) {
           query = query.eq('category_id', categoryData.id);
         }
@@ -85,28 +102,39 @@ export function EmployeeSocialFeed({
       if (error) throw error;
 
       if (data && data.length > 0) {
-        const orgIds = [...new Set(data.map((a: any) => a.organization_id).filter(Boolean))];
-        const catIds = [...new Set(data.map((a: any) => a.category_id).filter(Boolean))];
-        
+        const orgIds = [
+          ...new Set(data.map((a: any) => a.organization_id).filter(Boolean)),
+        ];
+        const catIds = [
+          ...new Set(data.map((a: any) => a.category_id).filter(Boolean)),
+        ];
+
         const [orgResult, catResult] = await Promise.all([
-          orgIds.length > 0 
+          orgIds.length > 0
             ? supabase.from('organizations').select('id, name').in('id', orgIds)
             : { data: [] },
           catIds.length > 0
-            ? supabase.from('activity_categories').select('id, name, icon, color').in('id', catIds)
-            : { data: [] }
+            ? supabase
+                .from('activity_categories')
+                .select('id, name, icon, color')
+                .in('id', catIds)
+            : { data: [] },
         ]);
-        
-        const orgMap = Object.fromEntries((orgResult.data || []).map((o: any) => [o.id, o]));
-        const catMap = Object.fromEntries((catResult.data || []).map((c: any) => [c.id, c]));
-        
+
+        const orgMap = Object.fromEntries(
+          (orgResult.data || []).map((o: any) => [o.id, o])
+        );
+        const catMap = Object.fromEntries(
+          (catResult.data || []).map((c: any) => [c.id, c])
+        );
+
         const enriched = data.map((item: any) => ({
           ...item,
           organization: orgMap[item.organization_id] || null,
           category: catMap[item.category_id] || null,
           location: item.location || orgMap[item.organization_id]?.name || null,
         }));
-        
+
         setActivities(enriched);
       } else {
         setActivities([]);
@@ -160,7 +188,11 @@ export function EmployeeSocialFeed({
   };
 
   const handleDetails = (activity: Activity) => {
-    alert(`ðŸ“‹ ${activity.title}\n\n${activity.description || 'No description'}\n\nðŸ“ ${activity.location || 'Global'}\nâ­ ${activity.points} PTS`);
+    alert(
+      `📋 ${activity.title}\n\n${activity.description || 'No description'}\n\n📍 ${
+        activity.location || 'Global'
+      }\n⭐ ${activity.points} PTS`
+    );
   };
 
   const isSpotlight = (activity: Activity) => {
@@ -171,21 +203,25 @@ export function EmployeeSocialFeed({
     return <LoadingScreen />;
   }
 
+  // ✅ Outer wrapper: space-y-6
   return (
     <div className="space-y-6">
       {/* Social Hub Header */}
       <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-xl p-6 border border-indigo-200/20">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold">Social Hub</h2>
               <Badge variant="secondary" className="text-xs">
-                {selectedCity} â€¢ {activities.length} Activities Found
+                {selectedCity} • {activities.length} Activities Found
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">Social Activities & Community Feed</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Social Activities &amp; Community Feed
+            </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Discover real-world meetups, hobby clubs, and social events around you. Join with coworkers to build connections and earn reward points!
+              Discover real-world meetups, hobby clubs, and social events around you.
+              Join with coworkers to build connections and earn reward points!
             </p>
           </div>
         </div>
@@ -194,13 +230,16 @@ export function EmployeeSocialFeed({
       {/* Remote Worker Hub */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
         <div className="flex items-start gap-3">
-          <div className="text-2xl">ðŸŒ</div>
+          <div className="text-2xl">🌍</div>
           <div>
-            <h3 className="text-sm font-semibold text-amber-800">Remote Worker Activity Hub</h3>
+            <h3 className="text-sm font-semibold text-amber-800">
+              Remote Worker Activity Hub
+            </h3>
             <p className="text-xs text-amber-700">
-              <span className="font-medium">Multi-City</span> â€” Suggesting activities for remote employees? 
-              Select or type ANY city worldwide (e.g. Seattle, Chicago, Denver, London, Toronto, Berlin) to generate 
-              and import local community Meetups for remote staff!
+              <span className="font-medium">Multi-City</span> — Suggesting activities
+              for remote employees? Select or type ANY city worldwide (e.g. Seattle,
+              Chicago, Denver, London, Toronto, Berlin) to generate and import local
+              community Meetups for remote staff!
             </p>
           </div>
         </div>
@@ -208,7 +247,11 @@ export function EmployeeSocialFeed({
 
       {/* Search */}
       <div className="relative">
-        <LucideIcon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <LucideIcon
+          name="Search"
+          size={18}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
         <Input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -219,7 +262,9 @@ export function EmployeeSocialFeed({
 
       {/* City Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground mr-1">City Hub:</span>
+        <span className="text-xs font-medium text-muted-foreground mr-1">
+          City Hub:
+        </span>
         {CITIES.map((city) => (
           <Button
             key={city}
@@ -228,7 +273,8 @@ export function EmployeeSocialFeed({
             onClick={() => handleCityChange(city)}
             className="text-xs"
           >
-            {city === 'All Cities' ? 'ðŸŒ' : city === '++ Custom City' ? 'âž•' : 'ðŸ“'} {city}
+            {city === 'All Cities' ? '🌍' : city === '++ Custom City' ? '➕' : '📍'}{' '}
+            {city}
           </Button>
         ))}
       </div>
@@ -242,8 +288,16 @@ export function EmployeeSocialFeed({
             placeholder="Enter custom city name..."
             className="w-48"
           />
-          <Button size="sm" onClick={handleCustomCityAdd}>Add</Button>
-          <Button variant="outline" size="sm" onClick={() => setShowCustomCity(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleCustomCityAdd}>
+            Add
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCustomCity(false)}
+          >
+            Cancel
+          </Button>
         </div>
       )}
 
@@ -256,7 +310,9 @@ export function EmployeeSocialFeed({
           </Badge>
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-xs font-medium text-muted-foreground mr-1">Domain:</span>
+          <span className="text-xs font-medium text-muted-foreground mr-1">
+            Domain:
+          </span>
           {DOMAINS.map((domain) => (
             <Button
               key={domain}
@@ -271,16 +327,16 @@ export function EmployeeSocialFeed({
         </div>
       </div>
 
-      {/* Activities Grid */}
+      {/* Activities Grid — the only grid */}
       {activities.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p className="text-lg">No social activities found</p>
           <p className="text-sm">Try adjusting your filters or check back later</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {activities.map((activity) => {
-            const interestMatch = userInterests.some((interest: string) => 
+            const interestMatch = userInterests.some((interest: string) =>
               activity.interest_tags?.includes(interest)
             );
             const spotlight = isSpotlight(activity);
