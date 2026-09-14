@@ -1,6 +1,7 @@
 // src/components/ui/Dialog.tsx
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 interface DialogContextValue {
   isOpen: boolean;
@@ -52,24 +53,47 @@ export function DialogContent({
   const context = React.useContext(DialogContext);
   if (!context) throw new Error('DialogContent must be used within Dialog');
 
+  // ✅ Lock body scroll while modal is open
+  React.useEffect(() => {
+    if (!context.isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+
+    // Compensate for the scrollbar disappearing
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
+    };
+  }, [context.isOpen]);
+
   if (!context.isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  const content = (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={() => context.setIsOpen(false)}
+    >
       <div
-        className={`bg-white rounded-lg shadow-lg max-w-md w-full p-6 max-h-[90vh] overflow-y-auto ${className}`}
+        className={`relative bg-white rounded-xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={() => context.setIsOpen(false)}
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
-        >
-          ✕
-        </button>
         {children}
       </div>
     </div>
   );
+
+  // ✅ Portal to document.body so `fixed` always anchors to the viewport
+  return typeof document !== 'undefined'
+    ? createPortal(content, document.body)
+    : content;
 }
 
 export function DialogHeader({
@@ -90,7 +114,9 @@ export function DialogTitle({
   className?: string;
 }) {
   return (
-    <h3 className={`text-lg font-semibold leading-none tracking-tight ${className}`}>
+    <h3
+      className={`text-lg font-semibold leading-none tracking-tight ${className}`}
+    >
       {children}
     </h3>
   );

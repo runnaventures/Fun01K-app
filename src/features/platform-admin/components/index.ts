@@ -1,11 +1,9 @@
-// src/features/platform-admin/components/index.ts
+﻿// src/features/platform-admin/components/index.ts
 
 // Platform Stats & Overview
 export { PlatformStatsCards } from './PlatformStatsCards';
 export { PlatformOverview } from './PlatformOverview';
 
-// Company Directory
-export { CompanyDirectory } from './CompanyDirectory/CompanyDirectory';
 
 // Points Governance
 export { PointsGovernance } from './PointsGovernance/PointsGovernance';
@@ -21,7 +19,7 @@ export { RewardsManager } from './RewardsManager/RewardsManager';
 
 // Activities Manager
 export { ActivitiesManager } from './ActivitiesManager/ActivitiesManager';
-// ✅ Add this export for the AddActivityDialog
+// âœ… Add this export for the AddActivityDialog
 export { AddActivityDialog } from './ActivitiesManager/AddActivityDialog';
 
 // Platform Settings

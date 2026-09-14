@@ -1,154 +1,128 @@
-﻿// src/features/activities/components/AdminSocialFeed.tsx
+﻿// src/features/shared/activities/components/AdminSocialFeed.tsx
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { LucideIcon } from '@/components/ui/LucideIcon';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
+import { Users, MapPin, Search, Globe } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { AdminActivityCard } from './AdminActivityCard';
-import { Activity } from '../types/activity.types';
+import type { Activity } from '../types/activity.types';
 
 interface AdminSocialFeedProps {
-  loadActivities?: (searchTerm?: string, selectedCity?: string, selectedDomain?: string) => Promise<Activity[]>;
+  loadActivities?: (
+    searchTerm?: string,
+    selectedCity?: string,
+    selectedDomain?: string
+  ) => Promise<Activity[]>;
   onJoinActivity?: (activityId: string) => void;
   onAddActivity?: (activityId: string) => void;
   onFlagActivity?: (activityId: string, reason: string) => void;
   onFeatureActivity?: (activityId: string) => void;
-  onAddNewActivity?: () => void;
   userInterests?: string[];
   organizationId?: string;
   joinedActivityIds?: string[];
 }
 
-const CITIES = ['Atlanta', 'San Francisco', 'New York', 'Austin', 'Seattle', 'Chicago', 'Denver', 'London', 'Remote/Virtual', 'All Cities'];
+// All predefined cities plus the "+ Custom City" pseudo-option
+const CITIES = [
+  'San Francisco',
+  'Atlanta',
+  'New York',
+  'Austin',
+  'Seattle',
+  'Chicago',
+  'Denver',
+  'London',
+  'Remote/Virtual',
+  'All Cities',
+  '++ Custom City',
+];
+
 const DOMAINS = ['All', 'Learning', 'Sports', 'Wellness', 'Hobby', 'Social'];
 
-export function AdminSocialFeed({ 
-  loadActivities, 
-  onJoinActivity,
-  onAddActivity, 
-  onFlagActivity, 
+export function AdminSocialFeed({
+  loadActivities,
+  onAddActivity,
+  onFlagActivity,
   onFeatureActivity,
-  onAddNewActivity,
   joinedActivityIds = [],
 }: AdminSocialFeedProps) {
-  const { user } = useAuth();
   const { organizationMember } = useOrganization();
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedCity, setSelectedCity] = useState('Atlanta');
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
+  const hasLoadedOnce = useRef(false);
+
+  const [selectedCity, setSelectedCity] = useState('San Francisco');
   const [selectedDomain, setSelectedDomain] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // ✅ Custom city input state
   const [showCustomCity, setShowCustomCity] = useState(false);
   const [customCity, setCustomCity] = useState('');
 
+  // ✅ Debounce search
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
-    if (loadActivities) {
-      fetchActivities();
-    } else {
-      loadSocialActivities();
-    }
-  }, [selectedCity, selectedDomain, searchTerm]);
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
-  const loadSocialActivities = async () => {
-    setIsLoading(true);
+  useEffect(() => {
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCity, selectedDomain, debouncedSearch]);
+
+  const run = async () => {
+    if (hasLoadedOnce.current) setIsRefetching(true);
+    else setIsInitialLoading(true);
     try {
-      const organizationId = organizationMember?.organization_id;
-      
-      let query = supabase
-        .from('activities')
-        .select('*')
-        .in('status', ['published', 'active'])
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (organizationId) {
-        query = query.or(`organization_id.eq.${organizationId},organization_id.is.null`);
-      }
-
-      if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
-      }
-
-      if (selectedDomain !== 'All') {
-        const { data: categoryData } = await supabase
-          .from('activity_categories')
-          .select('id')
-          .ilike('name', `%${selectedDomain}%`)
-          .maybeSingle();
-        
-        if (categoryData) {
-          query = query.eq('category_id', categoryData.id);
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Enrich with organization and category names
-      if (data && data.length > 0) {
-        const orgIds = [...new Set(data.map((a: any) => a.organization_id).filter(Boolean))];
-        const catIds = [...new Set(data.map((a: any) => a.category_id).filter(Boolean))];
-        
-        const [orgResult, catResult] = await Promise.all([
-          orgIds.length > 0 
-            ? supabase.from('organizations').select('id, name').in('id', orgIds)
-            : { data: [] },
-          catIds.length > 0
-            ? supabase.from('activity_categories').select('id, name, icon, color').in('id', catIds)
-            : { data: [] }
-        ]);
-        
-        const orgMap = Object.fromEntries((orgResult.data || []).map((o: any) => [o.id, o]));
-        const catMap = Object.fromEntries((catResult.data || []).map((c: any) => [c.id, c]));
-        
-        const enriched = data.map((item: any) => ({
-          ...item,
-          organization: orgMap[item.organization_id] || null,
-          category: catMap[item.category_id] || null,
-          location: item.location || orgMap[item.organization_id]?.name || null,
-        }));
-        
-        setActivities(enriched);
-      } else {
-        setActivities([]);
-      }
-    } catch (error) {
-      console.error('Error loading social activities:', error);
+      const data = loadActivities
+        ? await loadActivities(debouncedSearch, selectedCity, selectedDomain)
+        : await inlineLoad();
+      setActivities(data);
+      hasLoadedOnce.current = true;
+    } catch (err) {
+      console.error('Error loading social activities:', err);
       setActivities([]);
     } finally {
-      setIsLoading(false);
+      setIsInitialLoading(false);
+      setIsRefetching(false);
     }
   };
 
-  const fetchActivities = async () => {
-    if (!loadActivities) return;
-    setIsLoading(true);
-    try {
-      const data = await loadActivities(searchTerm, selectedCity, selectedDomain);
-      setActivities(data);
-    } catch (error) {
-      console.error('Error fetching activities:', error);
-      setActivities([]);
-    } finally {
-      setIsLoading(false);
+  const inlineLoad = async (): Promise<Activity[]> => {
+    const organizationId = organizationMember?.organization_id;
+    let query = supabase
+      .from('activities')
+      .select('*')
+      .in('status', ['published', 'active'])
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (organizationId) {
+      query = query.or(`organization_id.eq.${organizationId},organization_id.is.null`);
     }
+    if (debouncedSearch) {
+      query = query.or(`title.ilike.%${debouncedSearch}%,description.ilike.%${debouncedSearch}%`);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []) as Activity[];
   };
 
   const handleCityChange = (city: string) => {
     if (city === '++ Custom City') {
       setShowCustomCity(true);
-    } else {
-      setShowCustomCity(false);
-      setSelectedCity(city);
+      return;
     }
+    setShowCustomCity(false);
+    setSelectedCity(city);
   };
 
-  const handleCustomCityAdd = () => {
+  const applyCustomCity = () => {
     if (customCity.trim()) {
       setSelectedCity(customCity.trim());
       setShowCustomCity(false);
@@ -156,177 +130,228 @@ export function AdminSocialFeed({
     }
   };
 
-  const handleFeature = (activityId: string) => {
-    if (onFeatureActivity) onFeatureActivity(activityId);
-  };
-
-  const handleAdd = (activityId: string) => {
-    if (onAddActivity) onAddActivity(activityId);
-  };
-
-  const handleJoin = (activityId: string) => {
-    if (onJoinActivity) onJoinActivity(activityId);
-  };
-
-  const handleFlag = (activityId: string) => {
+  const handleFeature = (id: string) => onFeatureActivity?.(id);
+  const handleAdd = (id: string) => onAddActivity?.(id);
+  const handleFlag = (id: string) => {
     const reason = prompt('Why are you flagging this activity?');
-    if (reason && onFlagActivity) onFlagActivity(activityId, reason);
+    if (reason) onFlagActivity?.(id, reason);
   };
+  const handleEdit = (a: Activity) => console.log('edit', a.id);
+  const handleRefresh = () => run();
 
-  const handleEdit = (activity: Activity) => {
-    console.log('Edit activity:', activity.id);
-  };
-
-  const handleRefresh = () => {
-    if (loadActivities) {
-      fetchActivities();
-    } else {
-      loadSocialActivities();
+  const handleArchive = async (id: string) => {
+    if (!confirm('Archive this activity?')) return;
+    try {
+      await supabase
+        .from('activities')
+        .update({ status: 'archived', updated_at: new Date().toISOString() })
+        .eq('id', id);
+      run();
+    } catch (err) {
+      console.error('Archive failed:', err);
     }
   };
 
-  const isSpotlight = (activity: Activity) => {
-    return activity.is_featured && activity.status === 'published';
-  };
+  const isSpotlight = (a: Activity) =>
+    !!a.is_featured && a.status === 'published';
 
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
+  if (isInitialLoading) return <LoadingScreen />;
 
   return (
-    <div className="space-y-6">
-      {/* Social Hub Header */}
-      <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-xl p-6 border border-indigo-200/20">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold">Social Hub</h2>
-              <Badge variant="secondary" className="text-xs">
-                {selectedCity} â€¢ {activities.length} Activities Found
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">Social Activities & Community Feed</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Explore local community meetups, social clubs, and group gatherings to potentially suggest and publish for your employees' team board.
-            </p>
-          </div>
-          {onAddNewActivity && (
-            <Button onClick={onAddNewActivity} className="flex items-center gap-1.5">
-              <LucideIcon name="Plus" size={16} />
-              Add Activity
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Remote Worker Hub */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <div className="text-2xl">ðŸŒ</div>
-          <div>
-            <h3 className="text-sm font-semibold text-amber-800">Remote Worker Activity Hub</h3>
-            <p className="text-xs text-amber-700">
-              <span className="font-medium">Multi-City</span> â€” Suggesting activities for remote employees? 
-              Select or type ANY city worldwide (e.g. Seattle, Chicago, Denver, London, Toronto, Berlin) to generate 
-              and import local community Meetups for remote staff!
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <LucideIcon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search Meetup topic, group, or keyword (e.g., AI, Coffee, Yoga)..."
-          className="pl-10 py-6 text-sm"
-        />
-      </div>
-
-      {/* City Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground mr-1">City Hub:</span>
-        {CITIES.map((city) => (
-          <Button
-            key={city}
-            variant={selectedCity === city ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => handleCityChange(city)}
-            className="text-xs"
-          >
-            {city === 'All Cities' ? 'ðŸŒ' : city === '++ Custom City' ? 'âž•' : 'ðŸ“'} {city}
-          </Button>
-        ))}
-      </div>
-
-      {/* Custom City Input */}
-      {showCustomCity && (
-        <div className="flex items-center gap-2">
-          <Input
-            value={customCity}
-            onChange={(e) => setCustomCity(e.target.value)}
-            placeholder="Enter custom city name..."
-            className="w-48"
-          />
-          <Button size="sm" onClick={handleCustomCityAdd}>Add</Button>
-          <Button variant="outline" size="sm" onClick={() => setShowCustomCity(false)}>Cancel</Button>
+    <div className="space-y-5">
+      {/* Refetch pill */}
+      {isRefetching && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
+          <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+          Updating…
         </div>
       )}
 
-      {/* Location & Domain Filters */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Location:</span>
-          <Badge variant="secondary" className="text-xs">
+      {/* ─── Hero banner ────────────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-6 text-white shadow-md">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider">
+              <Users className="h-3.5 w-3.5" />
+              Social Hub
+            </span>
+            <p className="mt-2 text-xs font-medium text-white/60">
+              {selectedCity} • {activities.length} Activities Found
+            </p>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
+              Social Activities &amp; Community Feed
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-white/70">
+              Explore local community meetups, social clubs, and group gatherings
+              to potentially suggest and publish for your employees' team board.
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold">
+            <MapPin className="h-4 w-4" />
             {selectedCity}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-medium text-muted-foreground mr-1">Domain:</span>
-          {DOMAINS.map((domain) => (
-            <Button
-              key={domain}
-              variant={selectedDomain === domain ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedDomain(domain)}
-              className="text-xs"
-            >
-              {domain}
-            </Button>
-          ))}
+          </span>
         </div>
       </div>
 
-      {/* Activities Grid */}
+      {/* ─── Remote Worker banner ───────────────────────────────────── */}
+      <div className="flex items-start gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-950 px-5 py-4 text-white shadow-sm">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20">
+          <Globe className="h-5 w-5 text-indigo-300" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold">Remote Worker Activity Hub</h3>
+            <span className="rounded-full bg-violet-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-200">
+              Multi-City
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-white/70">
+            Suggesting activities for remote employees? Select or type{' '}
+            <span className="font-semibold text-white">ANY city worldwide</span>{' '}
+            (e.g. Seattle, Chicago, Denver, London, Toronto, Berlin) to generate
+            and import local community Meetups for remote staff!
+          </p>
+        </div>
+      </div>
+
+      {/* ─── Unified filter card ────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        {/* Search */}
+        <div className="relative border-b p-4">
+          <Search className="absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search Meetup topic, group, or keyword (e.g., AI, Coffee, Yoga)..."
+            className="pl-10 py-5 text-sm border-slate-200 bg-slate-50 focus:bg-white"
+          />
+        </div>
+
+        {/* City chips */}
+        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+          <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <MapPin className="h-3.5 w-3.5" />
+            City Hub:
+          </span>
+          {CITIES.map((city) => {
+            const isActive = selectedCity === city;
+            const isCustom = city === '++ Custom City';
+            return (
+              <button
+                key={city}
+                onClick={() => handleCityChange(city)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all',
+                  isActive && !isCustom
+                    ? 'bg-slate-900 text-white'
+                    : isCustom && showCustomCity
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                )}
+              >
+                {isCustom ? (
+                  <span className="text-sm leading-none">+</span>
+                ) : city === 'All Cities' ? (
+                  <Globe className="h-3 w-3" />
+                ) : (
+                  <MapPin className="h-3 w-3" />
+                )}
+                {isCustom ? 'Custom City' : city}
+              </button>
+            );
+          })}
+          <span className="ml-auto text-xs text-slate-500">
+            Location: <span className="font-semibold text-slate-800">{selectedCity}</span>
+          </span>
+        </div>
+
+        {/* Custom city input */}
+        {showCustomCity && (
+          <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Type any city:
+            </span>
+            <Input
+              value={customCity}
+              onChange={(e) => setCustomCity(e.target.value)}
+              placeholder="e.g., Toronto, Berlin, Sydney..."
+              className="h-9 w-64 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyCustomCity();
+                }
+              }}
+              autoFocus
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 rounded-lg bg-slate-900 px-4 text-xs font-semibold hover:bg-slate-800"
+              onClick={applyCustomCity}
+            >
+              Apply
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-lg px-4 text-xs font-semibold"
+              onClick={() => {
+                setShowCustomCity(false);
+                setCustomCity('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+
+        {/* Domain chips */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+          <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+            Domain:
+          </span>
+          {DOMAINS.map((domain) => {
+            const isActive = selectedDomain === domain;
+            return (
+              <button
+                key={domain}
+                onClick={() => setSelectedDomain(domain)}
+                className={cn(
+                  'rounded-xl px-3 py-1.5 text-xs font-semibold transition-all',
+                  isActive
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                )}
+              >
+                {domain}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── 2-column card grid ─────────────────────────────────────── */}
       {activities.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground border rounded-lg">
-          <p className="text-lg">No social activities found</p>
+        <div className="rounded-2xl border border-dashed py-16 text-center text-muted-foreground">
+          <p className="text-lg font-semibold">No social activities found</p>
           <p className="text-sm">Try adjusting your filters or check back later</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activities.map((activity) => {
-            const spotlight = isSpotlight(activity);
-
-            return (
-              <AdminActivityCard
-                key={activity.id}
-                activity={activity}
-                onAdd={() => handleAdd(activity.id)}
-                onFeature={() => handleFeature(activity.id)}
-                onArchive={() => {
-                  if (confirm('Archive this activity?')) {
-                    // Archive logic handled by parent
-                  }
-                }}
-                onEdit={() => handleEdit(activity)}
-                onRefresh={handleRefresh}
-                isSpotlight={spotlight}
-              />
-            );
-          })}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {activities.map((activity) => (
+            <AdminActivityCard
+              key={activity.id}
+              activity={activity}
+              onAdd={() => handleAdd(activity.id)}
+              onFeature={() => handleFeature(activity.id)}
+              onArchive={() => handleArchive(activity.id)}
+              onEdit={() => handleEdit(activity)}
+              onRefresh={handleRefresh}
+              isSpotlight={isSpotlight(activity)}
+            />
+          ))}
         </div>
       )}
     </div>

@@ -1,42 +1,54 @@
-﻿// src/features/activities/components/ActivityFeed.tsx
+﻿// src/features/shared/activities/components/ActivityFeed.tsx
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
-// Employee Components
+import { Sparkles, Users, MapPin } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { EmployeeFeaturedFeed } from './EmployeeFeaturedFeed';
 import { EmployeeSocialFeed } from './EmployeeSocialFeed';
 import { EmployeePlacesFeed } from './EmployeePlacesFeed';
-// Admin Components
 import { AdminFeaturedFeed } from './AdminFeaturedFeed';
 import { AdminSocialFeed } from './AdminSocialFeed';
 import { AdminPlacesFeed } from './AdminPlacesFeed';
-import { Activity } from '../types/activity.types';
+import type { Activity } from '../types/activity.types';
 
 interface ActivityFeedProps {
   tab?: 'featured' | 'social' | 'places';
   isAdmin?: boolean;
   onAddActivity?: () => void;
+  isFormOpen?: boolean;
 }
 
-export function ActivityFeed({ tab = 'featured', isAdmin = false, onAddActivity }: ActivityFeedProps) {
+type TabId = 'featured' | 'social' | 'places';
+
+export function ActivityFeed({
+  tab = 'featured',
+  isAdmin = false,
+  onAddActivity,
+  isFormOpen = false,
+}: ActivityFeedProps) {
   const { user, userRole } = useAuth();
   const { organizationMember } = useOrganization();
-  const [activeTab, setActiveTab] = useState<'featured' | 'social' | 'places'>(tab);
+  const [activeTab, setActiveTab] = useState<TabId>(tab);
   const [isLoading, setIsLoading] = useState(true);
   const [userInterests, setUserInterests] = useState<string[]>([]);
   const [joinedActivityIds, setJoinedActivityIds] = useState<string[]>([]);
-  
-  // Determine user type
-  const isCompanyAdmin = isAdmin || userRole === 'admin' || userRole === 'company_owner' || userRole === 'company_admin';
-  const isPlatformOwner = userRole === 'platform_owner' || userRole === 'platform_admin';
+  const [featuredCount, setFeaturedCount] = useState<number | null>(null);
 
-  // Load user interests for personalization
+  const isCompanyAdmin =
+    isAdmin ||
+    userRole === 'admin' ||
+    userRole === 'company_owner' ||
+    userRole === 'company_admin';
+  const isPlatformOwner =
+    userRole === 'platform_owner' || userRole === 'platform_admin';
+
+  // ─── Load user interests ─────────────────────────────────────────────
   useEffect(() => {
-    const loadUserInterests = async () => {
+    const run = async () => {
       if (!user) return;
       try {
         const { data, error } = await supabase
@@ -44,28 +56,21 @@ export function ActivityFeed({ tab = 'featured', isAdmin = false, onAddActivity 
           .select('interests')
           .eq('id', user.id)
           .maybeSingle();
-        
-        if (error) {
-          if (error.code === '42703' || error.message?.includes('column')) {
-            setUserInterests([]);
-            return;
-          }
-          throw error;
-        }
+        if (error && error.code !== '42703') throw error;
         setUserInterests(data?.interests || []);
-      } catch (error) {
-        console.error('Error loading user interests:', error);
+      } catch (err) {
+        console.error('Error loading interests:', err);
         setUserInterests([]);
       } finally {
         setIsLoading(false);
       }
     };
-    loadUserInterests();
+    run();
   }, [user]);
 
-  // Load joined activity IDs for the employee
+  // ─── Load joined activities ──────────────────────────────────────────
   useEffect(() => {
-    const loadJoinedActivities = async () => {
+    const run = async () => {
       if (!user || isCompanyAdmin) return;
       try {
         const { data, error } = await supabase
@@ -73,308 +78,218 @@ export function ActivityFeed({ tab = 'featured', isAdmin = false, onAddActivity 
           .select('activity_id')
           .eq('profile_id', user.id)
           .eq('status', 'joined');
-        
         if (error) throw error;
-        setJoinedActivityIds(data?.map((item: any) => item.activity_id) || []);
-      } catch (error) {
-        console.error('Error loading joined activities:', error);
-        setJoinedActivityIds([]);
+        setJoinedActivityIds((data || []).map((r: any) => r.activity_id));
+      } catch (err) {
+        console.error('Error loading joined:', err);
       }
     };
-    loadJoinedActivities();
+    run();
   }, [user, isCompanyAdmin]);
 
-  // Enrich activities with organization and category names
+  // ─── Count featured activities (for tab badge) ───────────────────────
+  useEffect(() => {
+    const count = async () => {
+      try {
+        const organizationId = organizationMember?.organization_id;
+        let query = supabase
+          .from('activities')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_featured', true)
+          .in('status', ['published', 'active']);
+        if (organizationId && !isPlatformOwner) {
+          query = query.or(
+            `organization_id.eq.${organizationId},organization_id.is.null`
+          );
+        }
+        const { count: total } = await query;
+        setFeaturedCount(total ?? 0);
+      } catch {
+        setFeaturedCount(null);
+      }
+    };
+    count();
+  }, [organizationMember?.organization_id, isPlatformOwner]);
+
+  // ─── Enrichment helper ───────────────────────────────────────────────
   const enrichActivities = async (data: any[]) => {
     if (!data || data.length === 0) return data;
-    
-    const orgIds = [...new Set(data.map(a => a.organization_id).filter(Boolean))];
-    const catIds = [...new Set(data.map(a => a.category_id).filter(Boolean))];
-    
-    const [orgResult, catResult] = await Promise.all([
-      orgIds.length > 0 
+    const orgIds = [...new Set(data.map((a) => a.organization_id).filter(Boolean))];
+    const catIds = [...new Set(data.map((a) => a.category_id).filter(Boolean))];
+    const [orgRes, catRes] = await Promise.all([
+      orgIds.length
         ? supabase.from('organizations').select('id, name').in('id', orgIds)
         : { data: [] },
-      catIds.length > 0
-        ? supabase.from('activity_categories').select('id, name, icon, color').in('id', catIds)
-        : { data: [] }
+      catIds.length
+        ? supabase
+            .from('activity_categories')
+            .select('id, name, icon, color')
+            .in('id', catIds)
+        : { data: [] },
     ]);
-    
-    const orgMap = Object.fromEntries((orgResult.data || []).map((o: any) => [o.id, o]));
-    const catMap = Object.fromEntries((catResult.data || []).map((c: any) => [c.id, c]));
-    
-    return data.map(item => ({
+    const orgMap = Object.fromEntries((orgRes.data || []).map((o: any) => [o.id, o]));
+    const catMap = Object.fromEntries((catRes.data || []).map((c: any) => [c.id, c]));
+    return data.map((item) => ({
       ...item,
       organization: orgMap[item.organization_id] || null,
       category: catMap[item.category_id] || null,
-      location: orgMap[item.organization_id]?.name || null,
     }));
   };
 
-  // Load featured activities
+  // ─── Loaders passed down to child feeds ──────────────────────────────
   const loadFeaturedActivities = async (): Promise<Activity[]> => {
-    try {
-      const organizationId = organizationMember?.organization_id;
-      
-      let query = supabase
-        .from('activities')
-        .select('*')
-        .in('status', ['published', 'active'])
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (organizationId && !isPlatformOwner) {
-        query = query.or(`organization_id.eq.${organizationId},organization_id.is.null`);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return await enrichActivities(data || []);
-    } catch (error) {
-      console.error('Error loading featured activities:', error);
-      return [];
+    const organizationId = organizationMember?.organization_id;
+    let query = supabase
+      .from('activities')
+      .select('*')
+      .eq('is_featured', true) // ← only featured
+      .in('status', ['published', 'active'])
+      .order('featured_at', { ascending: false }) // ← most-recently-featured first
+      .limit(20);
+    if (organizationId && !isPlatformOwner) {
+      query = query.or(
+        `organization_id.eq.${organizationId},organization_id.is.null`
+      );
     }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (await enrichActivities(data || [])) as Activity[];
   };
 
-  // Load social activities
   const loadSocialActivities = async (
-    searchTerm: string = '',
-    selectedCity: string = 'Atlanta',
-    selectedDomain: string = 'All'
+    searchTerm = '',
+    selectedCity = 'Atlanta',
+    selectedDomain = 'All'
   ): Promise<Activity[]> => {
-    try {
-      const organizationId = organizationMember?.organization_id;
-      
-      let query = supabase
-        .from('activities')
-        .select('*')
-        .in('status', ['published', 'active'])
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (organizationId && !isPlatformOwner) {
-        query = query.or(`organization_id.eq.${organizationId},organization_id.is.null`);
-      }
-
-      if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
-      }
-
-      if (selectedDomain !== 'All') {
-        const { data: categoryData } = await supabase
-          .from('activity_categories')
-          .select('id')
-          .ilike('name', `%${selectedDomain}%`)
-          .maybeSingle();
-        
-        if (categoryData) {
-          query = query.eq('category_id', categoryData.id);
-        }
-      }
-
-      if (selectedCity !== 'All Cities' && selectedCity !== 'Remote/Virtual') {
-        const { data: orgsInCity } = await supabase
-          .from('organizations')
-          .select('id')
-          .ilike('name', `%${selectedCity}%`)
-          .limit(10);
-        
-        if (orgsInCity && orgsInCity.length > 0) {
-          const orgIds = orgsInCity.map((o: any) => o.id);
-          query = query.in('organization_id', orgIds);
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return await enrichActivities(data || []);
-    } catch (error) {
-      console.error('Error loading social activities:', error);
-      return [];
+    const organizationId = organizationMember?.organization_id;
+    let query = supabase
+      .from('activities')
+      .select('*')
+      .in('status', ['published', 'active'])
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (organizationId && !isPlatformOwner) {
+      query = query.or(
+        `organization_id.eq.${organizationId},organization_id.is.null`
+      );
     }
+    if (searchTerm) {
+      query = query.or(
+        `title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`
+      );
+    }
+    if (selectedDomain !== 'All') {
+      const { data: cat } = await supabase
+        .from('activity_categories')
+        .select('id')
+        .ilike('name', `%${selectedDomain}%`)
+        .maybeSingle();
+      if (cat) query = query.eq('category_id', cat.id);
+    }
+    if (
+      selectedCity &&
+      selectedCity !== 'All Cities' &&
+      selectedCity !== 'Remote/Virtual'
+    ) {
+      const { data: orgs } = await supabase
+        .from('organizations')
+        .select('id')
+        .ilike('name', `%${selectedCity}%`)
+        .limit(10);
+      if (orgs?.length) query = query.in('organization_id', orgs.map((o: any) => o.id));
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (await enrichActivities(data || [])) as Activity[];
   };
 
-  // Load places activities
   const loadPlacesActivities = async (
-    searchTerm: string = '',
-    selectedCity: string = 'Atlanta',
-    venueType: string = 'All'
+    searchTerm = '',
+    selectedCity = 'Atlanta',
+    venueType = 'All'
   ): Promise<Activity[]> => {
-    try {
-      const organizationId = organizationMember?.organization_id;
-      
-      let query = supabase
-        .from('activities')
-        .select('*')
-        .in('status', ['published', 'active'])
-        .eq('source', 'google_places')
-        .order('created_at', { ascending: false })
-        .limit(30);
-
-      if (organizationId && !isPlatformOwner) {
-        query = query.or(`organization_id.eq.${organizationId},organization_id.is.null`);
-      }
-
-      if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
-      }
-
-      if (venueType !== 'All') {
-        const { data: categoryData } = await supabase
-          .from('activity_categories')
-          .select('id')
-          .ilike('name', `%${venueType}%`)
-          .maybeSingle();
-        
-        if (categoryData) {
-          query = query.eq('category_id', categoryData.id);
-        }
-      }
-
-      if (selectedCity !== 'All Cities') {
-        const { data: orgsInCity } = await supabase
-          .from('organizations')
-          .select('id')
-          .ilike('name', `%${selectedCity}%`)
-          .limit(10);
-        
-        if (orgsInCity && orgsInCity.length > 0) {
-          const orgIds = orgsInCity.map((o: any) => o.id);
-          query = query.in('organization_id', orgIds);
-        }
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return await enrichActivities(data || []);
-    } catch (error) {
-      console.error('Error loading places activities:', error);
-      return [];
+    const organizationId = organizationMember?.organization_id;
+    let query = supabase
+      .from('activities')
+      .select('*')
+      .in('status', ['published', 'active'])
+      .eq('source', 'google_places')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (organizationId && !isPlatformOwner) {
+      query = query.or(
+        `organization_id.eq.${organizationId},organization_id.is.null`
+      );
     }
+    if (searchTerm) {
+      query = query.or(
+        `title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`
+      );
+    }
+    if (venueType !== 'All') {
+      const { data: cat } = await supabase
+        .from('activity_categories')
+        .select('id')
+        .ilike('name', `%${venueType}%`)
+        .maybeSingle();
+      if (cat) query = query.eq('category_id', cat.id);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return (await enrichActivities(data || [])) as Activity[];
   };
 
-  // Handle join activity (Employee)
+  // ─── Action handlers passed to child feeds ───────────────────────────
   const handleJoinActivity = async (activityId: string) => {
     try {
-      // Check if already joined
-      const { data: existing } = await supabase
-        .from('activity_participations')
-        .select('id')
-        .eq('activity_id', activityId)
-        .eq('profile_id', user?.id)
-        .maybeSingle();
-
-      if (existing) {
-        alert('You have already joined this activity!');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('activity_participations')
-        .insert({
-          activity_id: activityId,
-          profile_id: user?.id,
-          status: 'joined',
-          joined_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        });
+      const { error } = await supabase.from('activity_participations').insert({
+        activity_id: activityId,
+        profile_id: user?.id,
+        status: 'joined',
+        joined_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
       if (error) throw error;
-      
-      setJoinedActivityIds([...joinedActivityIds, activityId]);
-      
-      const { data: activity } = await supabase
-        .from('activities')
-        .select('attendees_count')
-        .eq('id', activityId)
-        .single();
-      
-      if (activity) {
-        await supabase
-          .from('activities')
-          .update({ 
-            attendees_count: (activity.attendees_count || 0) + 1,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', activityId);
-      }
-      
-      alert('Successfully joined the activity! ðŸŽ‰');
-    } catch (error) {
-      console.error('Error joining activity:', error);
-      alert('Failed to join activity. Please try again.');
+      setJoinedActivityIds((prev) => [...prev, activityId]);
+      alert('Successfully joined the activity!');
+    } catch (err) {
+      console.error('join failed', err);
+      alert('Failed to join activity.');
     }
   };
 
-  // Handle add activity (Admin)
   const handleAddActivity = async (activityId: string) => {
     try {
-      const { data: existing } = await supabase
-        .from('activity_participations')
-        .select('id')
-        .eq('activity_id', activityId)
-        .eq('profile_id', user?.id)
-        .maybeSingle();
-
-      if (existing) {
-        alert('You have already joined this activity!');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('activity_participations')
-        .insert({
-          activity_id: activityId,
-          profile_id: user?.id,
-          status: 'joined',
-          joined_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        });
-      if (error) throw error;
-      
-      const { data: activity } = await supabase
-        .from('activities')
-        .select('attendees_count')
-        .eq('id', activityId)
-        .single();
-      
-      if (activity) {
-        await supabase
-          .from('activities')
-          .update({ 
-            attendees_count: (activity.attendees_count || 0) + 1,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', activityId);
-      }
-      
-      alert('Successfully added to the activity! ðŸŽ‰');
-    } catch (error) {
-      console.error('Error adding activity:', error);
-      alert('Failed to add activity. Please try again.');
+      await supabase.from('activity_participations').insert({
+        activity_id: activityId,
+        profile_id: user?.id,
+        status: 'joined',
+        joined_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
+      alert('Added to your activities!');
+    } catch (err) {
+      console.error('add failed', err);
+      alert('Failed to add activity.');
     }
   };
 
-  // Handle flag activity
   const handleFlagActivity = async (activityId: string, reason: string) => {
     if (!reason) return;
     try {
-      const { error } = await supabase
-        .from('activity_flags')
-        .insert({
-          activity_id: activityId,
-          profile_id: user?.id,
-          reason: reason,
-          created_at: new Date().toISOString(),
-        });
-      if (error) throw error;
-      alert('Activity flagged for review. Thank you for your feedback!');
-    } catch (error) {
-      console.error('Error flagging activity:', error);
-      alert('Failed to flag activity. Please try again.');
+      await supabase.from('activity_flags').insert({
+        activity_id: activityId,
+        profile_id: user?.id,
+        reason,
+        created_at: new Date().toISOString(),
+      });
+      alert('Activity flagged for review.');
+    } catch (err) {
+      console.error('flag failed', err);
+      alert('Failed to flag activity.');
     }
   };
 
-  // Handle feature activity (Admin only)
   const handleFeatureActivity = async (activityId: string) => {
     try {
       const { data: activity } = await supabase
@@ -382,8 +297,7 @@ export function ActivityFeed({ tab = 'featured', isAdmin = false, onAddActivity 
         .select('is_featured')
         .eq('id', activityId)
         .single();
-      
-      const { error } = await supabase
+      await supabase
         .from('activities')
         .update({
           is_featured: !activity?.is_featured,
@@ -391,125 +305,158 @@ export function ActivityFeed({ tab = 'featured', isAdmin = false, onAddActivity 
           updated_at: new Date().toISOString(),
         })
         .eq('id', activityId);
-      if (error) throw error;
-      alert(activity?.is_featured ? 'Activity unfeatured.' : 'Activity featured successfully! â­');
-    } catch (error) {
-      console.error('Error featuring activity:', error);
-      alert('Failed to feature activity. Please try again.');
+    } catch (err) {
+      console.error('feature toggle failed', err);
     }
   };
 
-  // Handle archive activity (Admin only)
-  const handleArchiveActivity = async (activityId: string) => {
-    if (!confirm('Archive this activity? It will no longer be visible to employees.')) return;
-    try {
-      const { error } = await supabase
-        .from('activities')
-        .update({
-          status: 'archived',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', activityId);
-      if (error) throw error;
-      alert('Activity archived successfully.');
-    } catch (error) {
-      console.error('Error archiving activity:', error);
-      alert('Failed to archive activity. Please try again.');
-    }
-  };
+  if (isLoading) return <LoadingScreen />;
 
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
+  const tabs: {
+    id: TabId;
+    label: string;
+    icon: React.ReactNode;
+    badge?: string | number;
+    isNew?: boolean;
+  }[] = [
+    {
+      id: 'featured',
+      label: 'Featured',
+      icon: <Sparkles className="h-4 w-4" />,
+      badge: featuredCount ?? undefined,
+    },
+    {
+      id: 'social',
+      label: 'Social',
+      icon: <Users className="h-4 w-4" />,
+    },
+    {
+      id: 'places',
+      label: 'Places',
+      icon: <MapPin className="h-4 w-4" />,
+      isNew: true,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <TabsList className="flex flex-wrap gap-1">
-          <TabsTrigger value="featured" className="text-xs">
-            Featured
-          </TabsTrigger>
-          <TabsTrigger value="social" className="text-xs">
-            Social
-          </TabsTrigger>
-          <TabsTrigger value="places" className="text-xs">
-            Places
-            <span className="ml-1 text-[10px] text-emerald-500">NEW</span>
-          </TabsTrigger>
-        </TabsList>
+      {/* Top pill tab bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-1 rounded-2xl border bg-white p-1 shadow-sm">
+          {tabs.map((t) => {
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all',
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                )}
+              >
+                {t.icon}
+                <span>{t.label}</span>
+                {t.badge !== undefined && (
+                  <span
+                    className={cn(
+                      'ml-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-700'
+                    )}
+                  >
+                    {t.badge}
+                  </span>
+                )}
+                {t.isNew && (
+                  <span
+                    className={cn(
+                      'ml-1 rounded-full px-2 py-0.5 text-[10px] font-bold',
+                      isActive
+                        ? 'bg-white text-indigo-700'
+                        : 'bg-indigo-100 text-indigo-700'
+                    )}
+                  >
+                    NEW
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-        {/* Featured Tab */}
-        <TabsContent value="featured" className="mt-4">
-          {isCompanyAdmin ? (
-            <AdminFeaturedFeed
-              loadActivities={loadFeaturedActivities}
-              onAddActivity={handleAddActivity}
-              onFeatureActivity={handleFeatureActivity}
-              onArchiveActivity={handleArchiveActivity}
-              onAddNewActivity={onAddActivity}
-              userInterests={userInterests}
-              organizationId={organizationMember?.organization_id}
-            />
-          ) : (
-            <EmployeeFeaturedFeed
-              loadActivities={loadFeaturedActivities}
-              onJoinActivity={handleJoinActivity}
-              onFlagActivity={handleFlagActivity}
-              userInterests={userInterests}
-              organizationId={organizationMember?.organization_id}
-              joinedActivityIds={joinedActivityIds}
-            />
-          )}
-        </TabsContent>
+        <div className="inline-flex items-center gap-2 rounded-2xl border bg-white px-4 py-2 shadow-sm">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span className="text-sm font-semibold text-slate-700">
+            Employer Activity Hub
+          </span>
+        </div>
+      </div>
 
-        {/* Social Tab */}
-        <TabsContent value="social" className="mt-4">
-          {isCompanyAdmin ? (
-            <AdminSocialFeed
-              loadActivities={loadSocialActivities}
-              onAddActivity={handleAddActivity}
-              onFlagActivity={handleFlagActivity}
-              onFeatureActivity={handleFeatureActivity}
-              onAddNewActivity={onAddActivity}
-              userInterests={userInterests}
-              organizationId={organizationMember?.organization_id}
-            />
-          ) : (
-            <EmployeeSocialFeed
-              loadActivities={loadSocialActivities}
-              onJoinActivity={handleJoinActivity}
-              onFlagActivity={handleFlagActivity}
-              userInterests={userInterests}
-              organizationId={organizationMember?.organization_id}
-              joinedActivityIds={joinedActivityIds}
-            />
-          )}
-        </TabsContent>
+      {/* Feed content */}
+      {activeTab === 'featured' &&
+        (isCompanyAdmin ? (
+          <AdminFeaturedFeed
+            loadActivities={loadFeaturedActivities}
+            onAddActivity={handleAddActivity}
+            onFlagActivity={handleFlagActivity}
+            onFeatureActivity={handleFeatureActivity}
+            onAddNewActivity={onAddActivity}
+            isFormOpen={isFormOpen}
+            userInterests={userInterests}
+            joinedActivityIds={joinedActivityIds}
+          />
+        ) : (
+          <EmployeeFeaturedFeed
+            loadActivities={loadFeaturedActivities}
+            onJoinActivity={handleJoinActivity}
+            onFlagActivity={handleFlagActivity}
+            userInterests={userInterests}
+            joinedActivityIds={joinedActivityIds}
+          />
+        ))}
 
-        {/* Places Tab */}
-        <TabsContent value="places" className="mt-4">
-          {isCompanyAdmin ? (
-            <AdminPlacesFeed
-              loadActivities={loadPlacesActivities}
-              onAddActivity={handleAddActivity}
-              onFlagActivity={handleFlagActivity}
-              onFeatureActivity={handleFeatureActivity}
-              onAddNewActivity={onAddActivity}
-              userInterests={userInterests}
-              organizationId={organizationMember?.organization_id}
-            />
-          ) : (
-            <EmployeePlacesFeed
-              loadActivities={loadPlacesActivities}
-              onJoinActivity={handleJoinActivity}
-              onFlagActivity={handleFlagActivity}
-              userInterests={userInterests}
-              organizationId={organizationMember?.organization_id}
-              joinedActivityIds={joinedActivityIds}
-            />
-          )}
-        </TabsContent>
-      </Tabs>
+      {activeTab === 'social' &&
+        (isCompanyAdmin ? (
+          <AdminSocialFeed
+            loadActivities={loadSocialActivities}
+            onAddActivity={handleAddActivity}
+            onFlagActivity={handleFlagActivity}
+            onFeatureActivity={handleFeatureActivity}
+            userInterests={userInterests}
+            joinedActivityIds={joinedActivityIds}
+          />
+        ) : (
+          <EmployeeSocialFeed
+            loadActivities={loadSocialActivities}
+            onJoinActivity={handleJoinActivity}
+            onFlagActivity={handleFlagActivity}
+            userInterests={userInterests}
+            joinedActivityIds={joinedActivityIds}
+          />
+        ))}
+
+      {activeTab === 'places' &&
+        (isCompanyAdmin ? (
+          <AdminPlacesFeed
+            loadActivities={loadPlacesActivities}
+            onAddActivity={handleAddActivity}
+            onFlagActivity={handleFlagActivity}
+            onFeatureActivity={handleFeatureActivity}
+            userInterests={userInterests}
+            joinedActivityIds={joinedActivityIds}
+          />
+        ) : (
+          <EmployeePlacesFeed
+            loadActivities={loadPlacesActivities}
+            onJoinActivity={handleJoinActivity}
+            onFlagActivity={handleFlagActivity}
+            userInterests={userInterests}
+            joinedActivityIds={joinedActivityIds}
+          />
+        ))}
     </div>
   );
 }

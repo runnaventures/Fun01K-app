@@ -10,6 +10,7 @@ import type { Activity } from '../types/activity.types';
 
 interface AdminActivityCardProps {
   activity: Activity;
+  onAdd?: () => void;
   onFeature: () => void;
   onArchive: () => void;
   onEdit: () => void;

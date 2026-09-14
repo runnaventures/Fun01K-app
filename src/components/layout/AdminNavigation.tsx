@@ -6,11 +6,11 @@ import { useOrganization } from '@/app/providers/OrganizationProvider';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { 
-  LayoutDashboard, 
-  Calendar, 
-  Gift, 
-  Users, 
+import {
+  LayoutDashboard,
+  Calendar,
+  Gift,
+  Users,
   Settings,
   LogOut,
   User,
@@ -20,7 +20,7 @@ import {
   Home,
   Building2,
   Plug,
-  Building
+  Building,
 } from 'lucide-react';
 
 interface AdminNavigationProps {
@@ -64,25 +64,18 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
 
   const navItems = type === 'company' ? companyNavItems : platformNavItems;
   const basePath = type === 'company' ? '/admin' : '/platform';
-  const profilePath = type === 'company' ? '/admin/profile' : '/platform/profile';
 
   // Fetch company info including logo
   useEffect(() => {
     const fetchCompanyInfo = async () => {
       if (!organizationMember?.organization_id) return;
-
       try {
         const { data, error } = await supabase
           .from('organizations')
           .select('name, company_code, logo_url')
           .eq('id', organizationMember.organization_id)
           .maybeSingle();
-
-        if (error) {
-          console.error('Error fetching company info:', error);
-          return;
-        }
-
+        if (error) return;
         if (data) {
           setCompanyName(data.name || '');
           setCompanyCode(data.company_code || '');
@@ -92,7 +85,6 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
         console.error('Error fetching company info:', error);
       }
     };
-
     fetchCompanyInfo();
   }, [organizationMember?.organization_id]);
 
@@ -121,25 +113,17 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
   const handleProfileClick = () => {
     setIsDropdownOpen(false);
     setIsMobileMenuOpen(false);
-    if (type === 'company') {
-      navigate('/admin/profile');
-    } else {
-      navigate('/platform/profile');
-    }
+    navigate(type === 'company' ? '/admin/profile' : '/platform/profile');
   };
 
-  const isActiveRoute = (href: string) => {
-    return location.pathname === href || location.pathname.startsWith(href + '/');
-  };
+  const isActiveRoute = (href: string) =>
+    location.pathname === href || location.pathname.startsWith(href + '/');
 
-  // Get user initials
   const getUserInitials = () => {
     const email = user?.email || '';
     if (email) {
       const parts = email.split('@')[0].split('.');
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-      }
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
       return email.substring(0, 2).toUpperCase();
     }
     return 'U';
@@ -147,71 +131,91 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
-      {/* Top Bar - Logo & Company */}
+      {/* Top Bar: Logo Left, Nav + Company Right */}
       <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Left: Logo & Platform Name */}
-          <div className="flex items-center gap-6">
-            <Link to={basePath} className="flex items-center gap-3 shrink-0">
-              <img 
-                src="/images/logo.png" 
-                alt="Fun01K" 
-                className="h-8 w-auto"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-              <span className="text-lg font-bold text-slate-800">Fun01K</span>
-            </Link>
-          </div>
+        <div className="flex items-center justify-between gap-4 h-16">
 
-          {/* Right: Company Logo & Name - Clickable Dropdown */}
-          <div className="flex items-center gap-4">
-            {/* Company Dropdown */}
+          {/* ─── LEFT: Logo ───────────────────────────────────────── */}
+          <Link to={basePath} className="flex items-center gap-3 shrink-0">
+            <img
+              src="/images/logo.png"
+              alt="Fun01K"
+              className="h-8 w-auto"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+            <span className="text-lg font-bold text-slate-800">Fun01K</span>
+          </Link>
+
+          {/* ─── RIGHT: Nav pill row + Company dropdown ───────────── */}
+          <div className="flex items-center gap-3">
+
+            {/* Desktop nav — pill container */}
+            <nav className="hidden lg:flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50/70 p-1.5">
+              {navItems.map((item) => {
+                const isActive = isActiveRoute(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.href}
+                    className={cn(
+                      'flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap',
+                      isActive
+                        ? 'bg-slate-900 text-white shadow-sm'         // ← black active
+                        : 'text-slate-500 hover:text-slate-900 hover:bg-white'
+                    )}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* Company dropdown */}
             <div className="relative company-dropdown">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center gap-2 hover:bg-slate-50 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer group"
+                className="flex items-center gap-2 rounded-full border border-slate-200 hover:bg-slate-50 px-3 py-1.5 transition-colors cursor-pointer group"
               >
                 {companyLogo ? (
-                  <img 
-                    src={companyLogo} 
-                    alt={companyName || 'Company'} 
+                  <img
+                    src={companyLogo}
+                    alt={companyName || 'Company'}
                     className="w-8 h-8 rounded-lg object-cover border border-slate-200"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+                  <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold text-sm">
                     {companyName?.charAt(0) || 'C'}
                   </div>
                 )}
                 <div className="text-left hidden md:block">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-slate-800 leading-tight group-hover:text-primary transition-colors">
-                      {companyName || 'My Company'}
-                    </p>
-                  </div>
+                  <p className="text-sm font-semibold text-slate-800 leading-tight group-hover:text-slate-900 transition-colors">
+                    {companyName || 'My Company'}
+                  </p>
                   {displayCode && (
-                    <p className="text-xs text-slate-500 leading-tight">
+                    <p className="text-[11px] text-slate-500 leading-tight">
                       Code: {displayCode}
                     </p>
                   )}
                 </div>
-                <ChevronDown className={cn(
-                  "w-4 h-4 text-slate-400 transition-transform duration-200",
-                  isDropdownOpen && "rotate-180"
-                )} />
+                <ChevronDown
+                  className={cn(
+                    'w-4 h-4 text-slate-400 transition-transform duration-200',
+                    isDropdownOpen && 'rotate-180'
+                  )}
+                />
               </button>
 
-              {/* Dropdown Menu */}
               {isDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl border border-slate-200 shadow-lg py-1.5 overflow-hidden z-50">
-                  {/* User Info */}
                   <div className="px-4 py-3 border-b border-slate-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
+                      <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white font-semibold text-sm">
                         {getUserInitials()}
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-800 truncate">
                           {user?.email}
                         </p>
@@ -222,7 +226,6 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
                     </div>
                   </div>
 
-                  {/* Company Profile Link */}
                   {type === 'company' && (
                     <button
                       onClick={handleProfileClick}
@@ -233,7 +236,6 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
                     </button>
                   )}
 
-                  {/* Sign Out */}
                   <button
                     onClick={handleLogout}
                     className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-slate-100 mt-1"
@@ -245,7 +247,7 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
               )}
             </div>
 
-            {/* Mobile menu button - ONLY visible on mobile */}
+            {/* Mobile menu button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="lg:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors"
@@ -261,31 +263,7 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
         </div>
       </div>
 
-      {/* Navigation Bar - Desktop only (hidden on mobile) */}
-      <div className="hidden lg:block border-t border-slate-100 bg-slate-50/50 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-1 overflow-x-auto py-1.5">
-          {navItems.map((item) => {
-            const isActive = isActiveRoute(item.href);
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={cn(
-                  'flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap',
-                  isActive
-                    ? 'bg-primary text-white shadow-sm shadow-primary/20'
-                    : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                )}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Mobile Navigation Menu - ONLY visible on mobile */}
+      {/* Mobile Navigation Menu */}
       {isMobileMenuOpen && (
         <div className="lg:hidden border-t border-slate-200 bg-white shadow-lg max-h-[80vh] overflow-y-auto">
           <nav className="px-4 py-3 space-y-1">
@@ -295,9 +273,9 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
                 to={item.href}
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors',
                   isActiveRoute(item.href)
-                    ? 'bg-primary/10 text-primary'
+                    ? 'bg-slate-900 text-white'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 )}
               >
@@ -314,9 +292,9 @@ export function AdminNavigation({ type }: AdminNavigationProps) {
                 className="flex items-center gap-3 px-3 py-2.5 w-full text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
               >
                 {companyLogo ? (
-                  <img 
-                    src={companyLogo} 
-                    alt={companyName || 'Company'} 
+                  <img
+                    src={companyLogo}
+                    alt={companyName || 'Company'}
                     className="w-6 h-6 rounded object-cover"
                   />
                 ) : (

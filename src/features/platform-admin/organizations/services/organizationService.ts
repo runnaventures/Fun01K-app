@@ -1,23 +1,70 @@
+﻿// src/features/platform-admin/organizations/services/organizationService.ts
+
 import { supabase } from '@/lib/supabase';
-import type { Organization, CreateOrganizationData, UpdateOrganizationData, OrganizationMember } from '../types/organization.types';
+import type {
+  Organization,
+  CreateOrganizationData,
+  UpdateOrganizationData,
+  OrganizationMember,
+} from '../types/organization.types';
 
 export const organizationService = {
-  // Get all organizations
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Get all organizations with member counts + owner email
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async getOrganizations(): Promise<Organization[]> {
-    const { data, error } = await supabase
+    // Fetch base org rows
+    const { data: orgs, error } = await supabase
       .from('organizations')
       .select('*')
-      .order('name');
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching organizations:', error);
       return [];
     }
 
-    return data as Organization[];
+    if (!orgs || orgs.length === 0) return [];
+
+    const orgIds = orgs.map((o: any) => o.id);
+
+    // Fetch member counts per org
+    const { data: memberRows } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .in('organization_id', orgIds);
+
+    const memberCountMap: Record<string, number> = {};
+    (memberRows || []).forEach((row: any) => {
+      memberCountMap[row.organization_id] =
+        (memberCountMap[row.organization_id] || 0) + 1;
+    });
+
+    // Fetch owner email per org (first company_owner found)
+    const { data: ownerRows } = await supabase
+      .from('organization_members')
+      .select('organization_id, profiles(email)')
+      .in('organization_id', orgIds)
+      .contains('roles', ['company_owner']);
+
+    const ownerEmailMap: Record<string, string> = {};
+    (ownerRows || []).forEach((row: any) => {
+      const email = row.profiles?.email;
+      if (email && !ownerEmailMap[row.organization_id]) {
+        ownerEmailMap[row.organization_id] = email;
+      }
+    });
+
+    return orgs.map((org: any) => ({
+      ...org,
+      members_count: memberCountMap[org.id] || 0,
+      contact_email: org.contact_email || ownerEmailMap[org.id] || null,
+    })) as Organization[];
   },
 
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Get a single organization
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async getOrganization(id: string): Promise<Organization | null> {
     if (!id || id === 'super-admin') {
       console.log('Invalid organization ID:', id);
@@ -38,8 +85,12 @@ export const organizationService = {
     return data as Organization;
   },
 
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Create organization
-  async createOrganization(data: CreateOrganizationData): Promise<Organization | null> {
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  async createOrganization(
+    data: CreateOrganizationData
+  ): Promise<Organization | null> {
     const { data: organization, error } = await supabase
       .from('organizations')
       .insert({
@@ -50,6 +101,9 @@ export const organizationService = {
         size: data.size || null,
         timezone: data.timezone || 'UTC',
         status: 'active',
+        subscription_plan: data.subscription_plan || 'starter',
+        monthly_points_allowance: data.monthly_points_allowance || 5000,
+        contact_email: data.contact_email || null,
       })
       .select('*')
       .single();
@@ -62,42 +116,19 @@ export const organizationService = {
     return organization as Organization;
   },
 
-  // Update organization - FIXED
-  async updateOrganization(id: string, data: UpdateOrganizationData): Promise<Organization | null> {
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Update organization
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  async updateOrganization(
+    id: string,
+    data: UpdateOrganizationData
+  ): Promise<Organization | null> {
     if (!id || id === 'super-admin') {
       console.error('Cannot update super-admin organization');
       return null;
     }
 
-    console.log('updateOrganization called with:', { id, data });
-    
-    // First, check if the organization exists
-    const { data: existing, error: checkError } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (checkError) {
-      console.error('Error checking organization existence:', checkError);
-      return null;
-    }
-
-    if (!existing) {
-      console.error('Organization not found with ID:', id);
-      return null;
-    }
-
-    // Build update object
-    const updateData: {
-      name?: string;
-      industry?: string | null;
-      size?: number | null;
-      website?: string | null;
-      timezone?: string;
-      status?: 'active' | 'inactive' | 'suspended';
-      updated_at: string;
-    } = {
+    const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -107,10 +138,13 @@ export const organizationService = {
     if (data.website !== undefined) updateData.website = data.website;
     if (data.timezone !== undefined) updateData.timezone = data.timezone;
     if (data.status !== undefined) updateData.status = data.status;
+    if (data.subscription_plan !== undefined)
+      updateData.subscription_plan = data.subscription_plan;
+    if (data.monthly_points_allowance !== undefined)
+      updateData.monthly_points_allowance = data.monthly_points_allowance;
+    if (data.contact_email !== undefined)
+      updateData.contact_email = data.contact_email;
 
-    console.log('Update data:', updateData);
-
-    // Use .select('*') without .single() to avoid PGRST116 error
     const { data: updated, error } = await supabase
       .from('organizations')
       .update(updateData)
@@ -122,42 +156,37 @@ export const organizationService = {
       return null;
     }
 
-    if (!updated || updated.length === 0) {
-      console.error('No rows updated');
-      return null;
-    }
+    if (!updated || updated.length === 0) return null;
 
-    console.log('Updated organization:', updated[0]);
     return updated[0] as Organization;
   },
 
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Delete organization
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async deleteOrganization(id: string): Promise<boolean> {
-    const { error } = await supabase
-      .from('organizations')
-      .delete()
-      .eq('id', id);
-
+    const { error } = await supabase.from('organizations').delete().eq('id', id);
     if (error) {
       console.error('Error deleting organization:', error);
       return false;
     }
-
     return true;
   },
 
-  // Upload logo
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Logo upload / remove (unchanged)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async uploadLogo(organizationId: string, file: File): Promise<string | null> {
     try {
-      const { error: bucketError } = await supabase.storage.createBucket('organization-logos', {
-        public: true,
-        fileSizeLimit: 5242880, // 5MB
-      });
+      const { error: bucketError } = await supabase.storage.createBucket(
+        'organization-logos',
+        { public: true, fileSizeLimit: 5242880 }
+      );
       if (bucketError && bucketError.message !== 'Bucket already exists') {
         console.error('Error creating bucket:', bucketError);
       }
     } catch (e) {
-      // Bucket might already exist
+      // ignore
     }
 
     const fileExt = file.name.split('.').pop();
@@ -166,10 +195,7 @@ export const organizationService = {
 
     const { error: uploadError } = await supabase.storage
       .from('organization-logos')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+      .upload(filePath, file, { cacheControl: '3600', upsert: false });
 
     if (uploadError) {
       console.error('Error uploading logo:', uploadError);
@@ -193,31 +219,20 @@ export const organizationService = {
     return data.publicUrl;
   },
 
-  // Remove logo
   async removeLogo(organizationId: string): Promise<boolean> {
-    const { data: org, error: fetchError } = await supabase
+    const { data: org } = await supabase
       .from('organizations')
       .select('logo_url')
       .eq('id', organizationId)
       .maybeSingle();
 
-    if (fetchError) {
-      console.error('Error fetching organization for logo removal:', fetchError);
-      return false;
-    }
-
     if (org?.logo_url) {
       const urlParts = org.logo_url.split('/');
-      const filePath = urlParts.slice(urlParts.indexOf('organization-logos') + 1).join('/');
-      
+      const filePath = urlParts
+        .slice(urlParts.indexOf('organization-logos') + 1)
+        .join('/');
       if (filePath) {
-        const { error } = await supabase.storage
-          .from('organization-logos')
-          .remove([filePath]);
-        
-        if (error) {
-          console.error('Error removing logo:', error);
-        }
+        await supabase.storage.from('organization-logos').remove([filePath]);
       }
     }
 
@@ -226,30 +241,15 @@ export const organizationService = {
       .update({ logo_url: null })
       .eq('id', organizationId);
 
-    if (error) {
-      console.error('Error removing logo from organization:', error);
-      return false;
-    }
-
-    return true;
+    return !error;
   },
 
-  // Invite employee
-  async inviteEmployee(organizationId: string, email: string, role: string): Promise<any> {
-    const { data, error } = await supabase.functions.invoke('invite-employee', {
-      body: { organizationId, email, role },
-    });
-
-    if (error) {
-      console.error('Error inviting employee:', error);
-      return { error };
-    }
-
-    return { data };
-  },
-
-  // Get organization members
-  async getOrganizationMembers(organizationId: string): Promise<OrganizationMember[]> {
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Members
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  async getOrganizationMembers(
+    organizationId: string
+  ): Promise<OrganizationMember[]> {
     const { data, error } = await supabase
       .from('organization_members')
       .select('*, profiles(first_name, last_name, email, avatar_url)')
@@ -263,7 +263,6 @@ export const organizationService = {
     return data as OrganizationMember[];
   },
 
-  // Update member role
   async updateMemberRole(memberId: string, roles: string[]): Promise<any> {
     const { data, error } = await supabase
       .from('organization_members')
@@ -271,26 +270,26 @@ export const organizationService = {
       .eq('id', memberId)
       .select();
 
-    if (error) {
-      console.error('Error updating member role:', error);
-      return { error };
-    }
-
-    return { data };
+    return error ? { error } : { data };
   },
 
-  // Remove member
   async removeMember(memberId: string): Promise<any> {
     const { error } = await supabase
       .from('organization_members')
       .update({ status: 'inactive', updated_at: new Date().toISOString() })
       .eq('id', memberId);
 
-    if (error) {
-      console.error('Error removing member:', error);
-      return { error };
-    }
+    return error ? { error } : { success: true };
+  },
 
-    return { success: true };
+  async inviteEmployee(
+    organizationId: string,
+    email: string,
+    role: string
+  ): Promise<any> {
+    const { data, error } = await supabase.functions.invoke('invite-employee', {
+      body: { organizationId, email, role },
+    });
+    return error ? { error } : { data };
   },
 };

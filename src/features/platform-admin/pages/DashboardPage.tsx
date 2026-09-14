@@ -1,4 +1,4 @@
-// src/features/platform-admin/pages/DashboardPage.tsx
+﻿// src/features/platform-admin/pages/DashboardPage.tsx
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,14 +12,12 @@ import {
   Gift,
   Plug,
   Plus,
-  Search,
-  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { usePlatformStats } from '../hooks/usePlatformStats';
-import { CompanyDirectory } from '../components/CompanyDirectory/CompanyDirectory';
+import OrganizationsPage from '../organizations/pages/OrganizationsPage';
+import { OnboardCompanyForm } from '../organizations/components/OnboardCompanyForm';
 import { PointsGovernance } from '../components/PointsGovernance/PointsGovernance';
 import { FeedModeration } from '../components/FeedModeration/FeedModeration';
 import { TaxonomyManager } from '../components/TaxonomyManager/TaxonomyManager';
@@ -47,7 +45,8 @@ export default function PlatformDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>('companies');
-  const { stats, isLoading } = usePlatformStats();
+  const [isOnboardOpen, setIsOnboardOpen] = useState(false);
+  const { stats } = usePlatformStats();
 
   const tabs: TabDef[] = [
     {
@@ -93,7 +92,7 @@ export default function PlatformDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* ───────────── Hero panel ───────────── */}
+      {/* Hero panel */}
       <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-6 text-white shadow-lg">
         {/* Top badges */}
         <div className="flex flex-wrap items-center gap-3">
@@ -102,7 +101,7 @@ export default function PlatformDashboardPage() {
             App Owner Control Panel
           </span>
           <span className="text-xs font-medium text-white/60">
-            Super Admin • Platform Master Operations
+            Super Admin - Platform Master Operations
           </span>
         </div>
 
@@ -125,11 +124,16 @@ export default function PlatformDashboardPage() {
               Platform Status: Operational
             </span>
             <Button
-              onClick={() => navigate('/platform/organizations')}
-              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500"
+              onClick={() => setIsOnboardOpen((v) => !v)}
+              className={
+                'rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ' +
+                (isOnboardOpen
+                  ? 'bg-slate-700 hover:bg-slate-600'
+                  : 'bg-violet-600 hover:bg-violet-500')
+              }
             >
               <Plus className="mr-1.5 h-4 w-4" />
-              Onboard Company Tenant
+              {isOnboardOpen ? 'Cancel' : 'Onboard Company Tenant'}
             </Button>
           </div>
         </div>
@@ -140,7 +144,6 @@ export default function PlatformDashboardPage() {
             label="Signed-up Tenants"
             value={stats?.totalOrganizations ?? 0}
             accent="text-emerald-300"
-            
           />
           <StatTile
             label="Total Platform Seats"
@@ -162,7 +165,14 @@ export default function PlatformDashboardPage() {
         </div>
       </div>
 
-      {/* ───────────── Tab bar ───────────── */}
+      {/* Onboard Company inline form — expands below hero */}
+      <OnboardCompanyForm
+        open={isOnboardOpen}
+        onClose={() => setIsOnboardOpen(false)}
+        onSuccess={() => setIsOnboardOpen(false)}
+      />
+
+      {/* Tab bar */}
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -198,9 +208,9 @@ export default function PlatformDashboardPage() {
         })}
       </div>
 
-      {/* ───────────── Tab content ───────────── */}
+      {/* Tab content */}
       <div className="rounded-2xl border bg-white p-4 shadow-sm">
-        {activeTab === 'companies' && <CompanyDirectory />}
+        {activeTab === 'companies' && <OrganizationsPage />}
         {activeTab === 'governance' && <PointsGovernance />}
         {activeTab === 'moderation' && <FeedModeration />}
         {activeTab === 'taxonomy' && <TaxonomyManager />}
@@ -211,8 +221,6 @@ export default function PlatformDashboardPage() {
     </div>
   );
 }
-
-/* ───────────── Sub-components ───────────── */
 
 function StatTile({
   label,

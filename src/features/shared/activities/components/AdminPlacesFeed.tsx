@@ -1,180 +1,413 @@
-// src/features/activities/components/AdminPlacesFeed.tsx
+// src/features/shared/activities/components/AdminPlacesFeed.tsx
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useOrganization } from '@/app/providers/OrganizationProvider';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { LucideIcon } from '@/components/ui/LucideIcon';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
+import { MapPin, Search, Globe, Map, Filter } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { AdminActivityCard } from './AdminActivityCard';
-import { Activity } from '../types/activity.types';
+import type { Activity } from '../types/activity.types';
 
 interface AdminPlacesFeedProps {
-  loadActivities: (searchTerm?: string, selectedCity?: string, venueType?: string) => Promise<Activity[]>;
-  onJoinActivity?: (activityId: string) => void;
+  loadActivities: (
+    searchTerm?: string,
+    selectedCity?: string,
+    venueType?: string
+  ) => Promise<Activity[]>;
   onAddActivity?: (activityId: string) => void;
   onFlagActivity?: (activityId: string, reason: string) => void;
   onFeatureActivity?: (activityId: string) => void;
-  onAddNewActivity?: () => void;
   userInterests?: string[];
   organizationId?: string;
   joinedActivityIds?: string[];
 }
 
-const CITIES = ['Atlanta', 'San Francisco', 'New York', 'Austin', 'Seattle', 'Chicago', 'All Cities'];
+const PRESET_CITIES = [
+  'San Francisco',
+  'Atlanta',
+  'New York',
+  'Austin',
+  'Seattle',
+  'Chicago',
+  'All Cities',
+];
+
 const VENUE_TYPES = ['All', 'Wellness', 'Sports', 'Social', 'Hobby', 'Learning'];
 
 export function AdminPlacesFeed({
   loadActivities,
-  onJoinActivity,
   onAddActivity,
   onFlagActivity,
   onFeatureActivity,
-  onAddNewActivity,
   joinedActivityIds = [],
 }: AdminPlacesFeedProps) {
+  const { organizationMember } = useOrganization();
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCity, setSelectedCity] = useState('Atlanta');
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
+  const hasLoadedOnce = useRef(false);
+
+  const [selectedCity, setSelectedCity] = useState('San Francisco');
   const [venueType, setVenueType] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Custom cities added this session
+  const [customCities, setCustomCities] = useState<string[]>([]);
+  const [showCustomCity, setShowCustomCity] = useState(false);
+  const [customCity, setCustomCity] = useState('');
+
+  // Google Maps API key (set VITE_GOOGLE_MAPS_PLATFORM_KEY in .env)
+  const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as
+    | string
+    | undefined;
+
+  // Debounced search
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   useEffect(() => {
-    fetchActivities();
-  }, [searchTerm, selectedCity, venueType]);
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, selectedCity, venueType]);
 
-  const fetchActivities = async () => {
-    setIsLoading(true);
+  const run = async () => {
+    if (hasLoadedOnce.current) setIsRefetching(true);
+    else setIsInitialLoading(true);
     try {
-      const data = await loadActivities(searchTerm, selectedCity, venueType);
+      const data = await loadActivities(debouncedSearch, selectedCity, venueType);
       setActivities(data);
-    } catch (error) {
-      console.error('Error fetching places activities:', error);
+      hasLoadedOnce.current = true;
+    } catch (err) {
+      console.error('Error loading places:', err);
       setActivities([]);
     } finally {
-      setIsLoading(false);
+      setIsInitialLoading(false);
+      setIsRefetching(false);
     }
   };
 
-  const handleFeature = (activityId: string) => {
-    if (onFeatureActivity) onFeatureActivity(activityId);
+  // ─── City handlers ───────────────────────────────────────────────────
+  const handleCityClick = (city: string) => {
+    setSelectedCity(city);
+    setShowCustomCity(false);
   };
 
-  const handleAdd = (activityId: string) => {
-    if (onAddActivity) onAddActivity(activityId);
+  const openCustomCityInput = () => {
+    setShowCustomCity(true);
   };
 
-  const handleFlag = (activityId: string) => {
-    const reason = prompt('Why are you flagging this activity?');
-    if (reason && onFlagActivity) onFlagActivity(activityId, reason);
+  const applyCustomCity = () => {
+    const trimmed = customCity.trim();
+    if (!trimmed) return;
+    setCustomCities((prev) =>
+      prev.includes(trimmed) ? prev : [...prev, trimmed]
+    );
+    setSelectedCity(trimmed);
+    setShowCustomCity(false);
+    setCustomCity('');
   };
 
-  const handleEdit = (activity: Activity) => {
-    console.log('Edit activity:', activity.id);
+  // ─── Card handlers ───────────────────────────────────────────────────
+  const handleFeature = (id: string) => onFeatureActivity?.(id);
+  const handleAdd = (id: string) => onAddActivity?.(id);
+  const handleFlag = (id: string) => {
+    const reason = prompt('Why are you flagging this place?');
+    if (reason) onFlagActivity?.(id, reason);
+  };
+  const handleEdit = (a: Activity) => console.log('edit', a.id);
+  const handleRefresh = () => run();
+
+  const handleArchive = async (id: string) => {
+    if (!confirm('Archive this place?')) return;
+    try {
+      await supabase
+        .from('activities')
+        .update({ status: 'archived', updated_at: new Date().toISOString() })
+        .eq('id', id);
+      run();
+    } catch (err) {
+      console.error('Archive failed:', err);
+    }
   };
 
-  const handleRefresh = () => {
-    fetchActivities();
-  };
+  const isSpotlight = (a: Activity) =>
+    !!a.is_featured && a.status === 'published';
 
-  const isSpotlight = (activity: Activity) => {
-    return activity.is_featured && activity.status === 'published';
-  };
+  // Map query — uses loaded activity locations or falls back to city
+  const mapQuery = (() => {
+    const locations = activities
+      .map((a) => a.location)
+      .filter(Boolean)
+      .slice(0, 10);
+    if (locations.length > 0) return locations.join(' OR ');
+    return selectedCity;
+  })();
 
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
+  if (isInitialLoading) return <LoadingScreen />;
 
   return (
-    <div className="space-y-6">
-      {/* Places Hub Header */}
-      <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-xl p-6 border border-blue-200/20">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold">Places Hub</h2>
-            <p className="text-sm text-muted-foreground">{selectedCity} • {activities.length} Venues Pinned</p>
-            <p className="text-xs text-muted-foreground mt-1">Places & Venue Discovery — Convert any place into a team activity!</p>
+    <div className="space-y-5">
+      {/* Refetch pill */}
+      {isRefetching && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
+          <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+          Updating…
+        </div>
+      )}
+
+      {/* ─── Hero banner ─────────────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-6 text-white shadow-md">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider">
+              <MapPin className="h-3.5 w-3.5" />
+              Places Hub
+            </span>
+            <p className="mt-2 text-xs font-medium text-white/60">
+              {selectedCity} • {activities.length} Venues Pinned
+            </p>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
+              Places &amp; Venue Discovery
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-white/70">
+              Explore activity spots, parks, climbing gyms, and wellness venues
+              around your team's locations to potentially suggest and curate for
+              employees.
+            </p>
           </div>
-          {onAddNewActivity && (
-            <Button onClick={onAddNewActivity} className="flex items-center gap-1.5">
-              <LucideIcon name="Plus" size={16} />
-              Add Activity
+          <span className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold">
+            <MapPin className="h-4 w-4" />
+            {selectedCity}
+          </span>
+        </div>
+      </div>
+
+      {/* ─── Search (standalone card) ──────────────────────────────── */}
+      <div className="rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search Google Places (e.g., Climbing, Park, Museum, Cafe)..."
+            className="pl-11 h-12 text-sm border-slate-200 bg-slate-50 focus:bg-white rounded-xl"
+          />
+        </div>
+      </div>
+
+      {/* ─── City chips (standalone card) ──────────────────────────── */}
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 p-4">
+          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <MapPin className="h-4 w-4" />
+            City:
+          </span>
+
+          {PRESET_CITIES.map((city) => {
+            const isActive = selectedCity === city;
+            return (
+              <button
+                key={city}
+                onClick={() => handleCityClick(city)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all',
+                  isActive
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                )}
+              >
+                {city === 'All Cities' ? (
+                  <Globe className="h-3.5 w-3.5" />
+                ) : (
+                  <MapPin className="h-3.5 w-3.5" />
+                )}
+                {city}
+              </button>
+            );
+          })}
+
+          {/* Custom cities appear inline with presets */}
+          {customCities.map((city) => {
+            const isActive = selectedCity === city;
+            return (
+              <button
+                key={city}
+                onClick={() => handleCityClick(city)}
+                title="Custom city"
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all',
+                  isActive
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                )}
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                {city}
+              </button>
+            );
+          })}
+
+          {/* + Custom City button pushed right */}
+          <button
+            onClick={openCustomCityInput}
+            className={cn(
+              'ml-auto inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition-all',
+              showCustomCity
+                ? 'border-indigo-600 bg-indigo-600 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+            )}
+          >
+            <span className="text-sm leading-none">+</span>
+            Custom City
+          </button>
+        </div>
+
+        {/* Custom city input row */}
+        {showCustomCity && (
+          <div className="flex flex-wrap items-center gap-3 border-t bg-slate-50 px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Type any city:
+            </span>
+            <Input
+              value={customCity}
+              onChange={(e) => setCustomCity(e.target.value)}
+              placeholder="e.g., Toronto, Berlin, Sydney..."
+              className="h-9 w-64 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  applyCustomCity();
+                }
+              }}
+              autoFocus
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 rounded-lg bg-slate-900 px-4 text-xs font-semibold hover:bg-slate-800"
+              onClick={applyCustomCity}
+            >
+              Add City
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-lg px-4 text-xs font-semibold"
+              onClick={() => {
+                setShowCustomCity(false);
+                setCustomCity('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Venue type (standalone row, no card) ──────────────────── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+          <Filter className="h-3.5 w-3.5" />
+          Venue Type:
+        </span>
+        {VENUE_TYPES.map((type) => {
+          const isActive = venueType === type;
+          return (
+            <button
+              key={type}
+              onClick={() => setVenueType(type)}
+              className={cn(
+                'rounded-full px-4 py-2 text-xs font-semibold transition-all',
+                isActive
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+              )}
+            >
+              {type}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ─── Interactive Places Map View ────────────────────────────── */}
+      <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Map className="h-4 w-4 text-slate-700" />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
+              Interactive Places Map View
+            </h3>
+          </div>
+          <span className="text-xs font-semibold text-slate-600">
+            {activities.length}{' '}
+            {activities.length === 1 ? 'Venue' : 'Venues'} Pinned
+          </span>
+        </div>
+
+        <div className="p-4">
+          {googleMapsKey ? (
+            <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-slate-100">
+              <iframe
+                title="Places Map"
+                src={`https://www.google.com/maps/embed/v1/search?key=${googleMapsKey}&q=${encodeURIComponent(
+                  mapQuery
+                )}&zoom=12`}
+                className="h-full w-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            <div className="flex h-[420px] w-full flex-col items-center justify-center rounded-xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-8 text-center text-white">
+              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
+                <MapPin className="h-8 w-8 text-white/80" />
+              </div>
+              <h4 className="text-lg font-bold">
+                Google Maps Interactive Canvas
+              </h4>
+              <p className="mt-2 max-w-lg text-sm text-white/70">
+                Connect your{' '}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-amber-300">
+                  GOOGLE_MAPS_PLATFORM_KEY
+                </code>{' '}
+                in Secrets to render live satellite tiles and dynamic place pin
+                overlays!
+              </p>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <LucideIcon name="Search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search Google Places (e.g., Climbing, Park, Museum, Cafe)..."
-          className="pl-10 py-6 text-sm"
-        />
-      </div>
-
-      {/* City Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground mr-1">City:</span>
-        {CITIES.map((city) => (
-          <Button
-            key={city}
-            variant={selectedCity === city ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedCity(city)}
-            className="text-xs"
-          >
-            {city === 'All Cities' ? '🌍' : '📍'} {city}
-          </Button>
-        ))}
-      </div>
-
-      {/* Venue Type Filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-muted-foreground mr-1">Venue Type:</span>
-        {VENUE_TYPES.map((type) => (
-          <Button
-            key={type}
-            variant={venueType === type ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setVenueType(type)}
-            className="text-xs"
-          >
-            {type}
-          </Button>
-        ))}
-      </div>
-
-      {/* Places Grid */}
+      {/* ─── 2-column card grid ─────────────────────────────────────── */}
       {activities.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground border rounded-lg">
-          <p className="text-lg">No places discovered yet</p>
-          <p className="text-sm">Explore local venues and convert them into activities</p>
+        <div className="rounded-2xl border border-dashed py-16 text-center text-muted-foreground">
+          <p className="text-lg font-semibold">No places discovered yet</p>
+          <p className="text-sm">
+            Explore local venues and convert them into activities
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activities.map((activity) => {
-            const spotlight = isSpotlight(activity);
-
-            return (
-              <AdminActivityCard
-                key={activity.id}
-                activity={activity}
-                onAdd={() => handleAdd(activity.id)}
-                onFeature={() => handleFeature(activity.id)}
-                onArchive={() => {
-                  if (confirm('Archive this place?')) {
-                    // Archive logic handled by parent
-                  }
-                }}
-                onEdit={() => handleEdit(activity)}
-                onRefresh={handleRefresh}
-                isSpotlight={spotlight}
-              />
-            );
-          })}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {activities.map((activity) => (
+            <AdminActivityCard
+              key={activity.id}
+              activity={activity}
+              onAdd={() => handleAdd(activity.id)}
+              onFeature={() => handleFeature(activity.id)}
+              onArchive={() => handleArchive(activity.id)}
+              onEdit={() => handleEdit(activity)}
+              onRefresh={handleRefresh}
+              isSpotlight={isSpotlight(activity)}
+            />
+          ))}
         </div>
       )}
     </div>
