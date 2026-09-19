@@ -24,9 +24,9 @@ interface AdminSocialFeedProps {
   userInterests?: string[];
   organizationId?: string;
   joinedActivityIds?: string[];
+  refreshKey?: number;  // ← NEW
 }
 
-// All predefined cities plus the "+ Custom City" pseudo-option
 const CITIES = [
   'San Francisco',
   'Atlanta',
@@ -49,6 +49,7 @@ export function AdminSocialFeed({
   onFlagActivity,
   onFeatureActivity,
   joinedActivityIds = [],
+  refreshKey = 0,
 }: AdminSocialFeedProps) {
   const { organizationMember } = useOrganization();
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -60,11 +61,9 @@ export function AdminSocialFeed({
   const [selectedDomain, setSelectedDomain] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // ✅ Custom city input state
   const [showCustomCity, setShowCustomCity] = useState(false);
   const [customCity, setCustomCity] = useState('');
 
-  // ✅ Debounce search
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
@@ -74,7 +73,7 @@ export function AdminSocialFeed({
   useEffect(() => {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCity, selectedDomain, debouncedSearch]);
+  }, [selectedCity, selectedDomain, debouncedSearch, refreshKey]);
 
   const run = async () => {
     if (hasLoadedOnce.current) setIsRefetching(true);
@@ -98,7 +97,11 @@ export function AdminSocialFeed({
     const organizationId = organizationMember?.organization_id;
     let query = supabase
       .from('activities')
-      .select('*')
+      .select(`
+        *,
+        interest:interest_id(id, name, icon, color),
+        sub_interest:sub_interest_id(id, name, slug)
+      `)
       .in('status', ['published', 'active'])
       .order('created_at', { ascending: false })
       .limit(50);
@@ -130,13 +133,23 @@ export function AdminSocialFeed({
     }
   };
 
-  const handleFeature = (id: string) => onFeatureActivity?.(id);
+  // ─── CHANGED: await the parent handler, then refetch ───
+  const handleFeature = async (id: string) => {
+    if (onFeatureActivity) {
+      await onFeatureActivity(id);
+    }
+    run();
+  };
   const handleAdd = (id: string) => onAddActivity?.(id);
   const handleFlag = (id: string) => {
     const reason = prompt('Why are you flagging this activity?');
     if (reason) onFlagActivity?.(id, reason);
   };
-  const handleEdit = (a: Activity) => console.log('edit', a.id);
+  const handleEdit = (a: Activity) => {
+    alert(
+      'Company-admin edit flow is coming soon. For now, edit this activity from Platform Admin → Activities.'
+    );
+  };
   const handleRefresh = () => run();
 
   const handleArchive = async (id: string) => {
@@ -159,7 +172,6 @@ export function AdminSocialFeed({
 
   return (
     <div className="space-y-5">
-      {/* Refetch pill */}
       {isRefetching && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
           <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
@@ -167,7 +179,6 @@ export function AdminSocialFeed({
         </div>
       )}
 
-      {/* ─── Hero banner ────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-6 text-white shadow-md">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -193,7 +204,6 @@ export function AdminSocialFeed({
         </div>
       </div>
 
-      {/* ─── Remote Worker banner ───────────────────────────────────── */}
       <div className="flex items-start gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-950 px-5 py-4 text-white shadow-sm">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20">
           <Globe className="h-5 w-5 text-indigo-300" />
@@ -214,9 +224,7 @@ export function AdminSocialFeed({
         </div>
       </div>
 
-      {/* ─── Unified filter card ────────────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-        {/* Search */}
         <div className="relative border-b p-4">
           <Search className="absolute left-7 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
@@ -227,7 +235,6 @@ export function AdminSocialFeed({
           />
         </div>
 
-        {/* City chips */}
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
           <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
             <MapPin className="h-3.5 w-3.5" />
@@ -265,7 +272,6 @@ export function AdminSocialFeed({
           </span>
         </div>
 
-        {/* Custom city input */}
         {showCustomCity && (
           <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-4 py-3">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -307,7 +313,6 @@ export function AdminSocialFeed({
           </div>
         )}
 
-        {/* Domain chips */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3">
           <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
             Domain:
@@ -332,7 +337,6 @@ export function AdminSocialFeed({
         </div>
       </div>
 
-      {/* ─── 2-column card grid ─────────────────────────────────────── */}
       {activities.length === 0 ? (
         <div className="rounded-2xl border border-dashed py-16 text-center text-muted-foreground">
           <p className="text-lg font-semibold">No social activities found</p>

@@ -38,6 +38,9 @@ export function ActivityFeed({
   const [joinedActivityIds, setJoinedActivityIds] = useState<string[]>([]);
   const [featuredCount, setFeaturedCount] = useState<number | null>(null);
 
+  // Bumped after any admin write to force child feeds to refetch
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const isCompanyAdmin =
     isAdmin ||
     userRole === 'admin' ||
@@ -46,7 +49,7 @@ export function ActivityFeed({
   const isPlatformOwner =
     userRole === 'platform_owner' || userRole === 'platform_admin';
 
-  // ─── Load user interests ─────────────────────────────────────────────
+  // --- Load user interests ---------------------------------------------
   useEffect(() => {
     const run = async () => {
       if (!user) return;
@@ -68,7 +71,7 @@ export function ActivityFeed({
     run();
   }, [user]);
 
-  // ─── Load joined activities ──────────────────────────────────────────
+  // --- Load joined activities ------------------------------------------
   useEffect(() => {
     const run = async () => {
       if (!user || isCompanyAdmin) return;
@@ -87,7 +90,7 @@ export function ActivityFeed({
     run();
   }, [user, isCompanyAdmin]);
 
-  // ─── Count featured activities (for tab badge) ───────────────────────
+  // --- Count featured activities (for tab badge) -----------------------
   useEffect(() => {
     const count = async () => {
       try {
@@ -109,9 +112,9 @@ export function ActivityFeed({
       }
     };
     count();
-  }, [organizationMember?.organization_id, isPlatformOwner]);
+  }, [organizationMember?.organization_id, isPlatformOwner, refreshKey]);
 
-  // ─── Enrichment helper ───────────────────────────────────────────────
+  // --- Enrichment helper (used by featured + social feeds) -------------
   const enrichActivities = async (data: any[]) => {
     if (!data || data.length === 0) return data;
     const orgIds = [...new Set(data.map((a) => a.organization_id).filter(Boolean))];
@@ -136,15 +139,19 @@ export function ActivityFeed({
     }));
   };
 
-  // ─── Loaders passed down to child feeds ──────────────────────────────
+  // --- Loaders passed down to child feeds ------------------------------
   const loadFeaturedActivities = async (): Promise<Activity[]> => {
     const organizationId = organizationMember?.organization_id;
     let query = supabase
       .from('activities')
-      .select('*')
-      .eq('is_featured', true) // ← only featured
+      .select(`
+        *,
+        interest:interest_id(id, name, icon, color),
+        sub_interest:sub_interest_id(id, name, slug)
+      `)
+      .eq('is_featured', true)
       .in('status', ['published', 'active'])
-      .order('featured_at', { ascending: false }) // ← most-recently-featured first
+      .order('featured_at', { ascending: false })
       .limit(20);
     if (organizationId && !isPlatformOwner) {
       query = query.or(
@@ -164,7 +171,11 @@ export function ActivityFeed({
     const organizationId = organizationMember?.organization_id;
     let query = supabase
       .from('activities')
-      .select('*')
+      .select(`
+        *,
+        interest:interest_id(id, name, icon, color),
+        sub_interest:sub_interest_id(id, name, slug)
+      `)
       .in('status', ['published', 'active'])
       .order('created_at', { ascending: false })
       .limit(50);
@@ -203,43 +214,7 @@ export function ActivityFeed({
     return (await enrichActivities(data || [])) as Activity[];
   };
 
-  const loadPlacesActivities = async (
-    searchTerm = '',
-    selectedCity = 'Atlanta',
-    venueType = 'All'
-  ): Promise<Activity[]> => {
-    const organizationId = organizationMember?.organization_id;
-    let query = supabase
-      .from('activities')
-      .select('*')
-      .in('status', ['published', 'active'])
-      .eq('source', 'google_places')
-      .order('created_at', { ascending: false })
-      .limit(30);
-    if (organizationId && !isPlatformOwner) {
-      query = query.or(
-        `organization_id.eq.${organizationId},organization_id.is.null`
-      );
-    }
-    if (searchTerm) {
-      query = query.or(
-        `title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`
-      );
-    }
-    if (venueType !== 'All') {
-      const { data: cat } = await supabase
-        .from('activity_categories')
-        .select('id')
-        .ilike('name', `%${venueType}%`)
-        .maybeSingle();
-      if (cat) query = query.eq('category_id', cat.id);
-    }
-    const { data, error } = await query;
-    if (error) throw error;
-    return (await enrichActivities(data || [])) as Activity[];
-  };
-
-  // ─── Action handlers passed to child feeds ───────────────────────────
+  // --- Action handlers passed to child feeds ---------------------------
   const handleJoinActivity = async (activityId: string) => {
     try {
       const { error } = await supabase.from('activity_participations').insert({
@@ -290,6 +265,7 @@ export function ActivityFeed({
     }
   };
 
+  // Bumps refreshKey after any write so children refetch
   const handleFeatureActivity = async (activityId: string) => {
     try {
       const { data: activity } = await supabase
@@ -297,7 +273,7 @@ export function ActivityFeed({
         .select('is_featured')
         .eq('id', activityId)
         .single();
-      await supabase
+      const { error } = await supabase
         .from('activities')
         .update({
           is_featured: !activity?.is_featured,
@@ -305,8 +281,27 @@ export function ActivityFeed({
           updated_at: new Date().toISOString(),
         })
         .eq('id', activityId);
+      if (error) throw error;
+      setRefreshKey((k) => k + 1);
     } catch (err) {
       console.error('feature toggle failed', err);
+      alert('Failed to update feature status.');
+    }
+  };
+
+  const handleArchiveActivity = async (activityId: string) => {
+    if (!confirm('Archive this activity?')) return;
+    try {
+      const { error } = await supabase
+        .from('activities')
+        .update({ status: 'archived', updated_at: new Date().toISOString() })
+        .eq('id', activityId);
+      if (error) throw error;
+      alert('Activity archived.');
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error('archive failed', err);
+      alert('Failed to archive activity.');
     }
   };
 
@@ -340,7 +335,6 @@ export function ActivityFeed({
 
   return (
     <div className="space-y-6">
-      {/* Top pill tab bar */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-1 rounded-2xl border bg-white p-1 shadow-sm">
           {tabs.map((t) => {
@@ -395,7 +389,7 @@ export function ActivityFeed({
         </div>
       </div>
 
-      {/* Feed content */}
+      {/* ─── Featured ─────────────────────────────────────────── */}
       {activeTab === 'featured' &&
         (isCompanyAdmin ? (
           <AdminFeaturedFeed
@@ -403,10 +397,12 @@ export function ActivityFeed({
             onAddActivity={handleAddActivity}
             onFlagActivity={handleFlagActivity}
             onFeatureActivity={handleFeatureActivity}
+            onArchiveActivity={handleArchiveActivity}
             onAddNewActivity={onAddActivity}
             isFormOpen={isFormOpen}
             userInterests={userInterests}
             joinedActivityIds={joinedActivityIds}
+            refreshKey={refreshKey}
           />
         ) : (
           <EmployeeFeaturedFeed
@@ -418,6 +414,7 @@ export function ActivityFeed({
           />
         ))}
 
+      {/* ─── Social ───────────────────────────────────────────── */}
       {activeTab === 'social' &&
         (isCompanyAdmin ? (
           <AdminSocialFeed
@@ -427,6 +424,7 @@ export function ActivityFeed({
             onFeatureActivity={handleFeatureActivity}
             userInterests={userInterests}
             joinedActivityIds={joinedActivityIds}
+            refreshKey={refreshKey}
           />
         ) : (
           <EmployeeSocialFeed
@@ -438,24 +436,15 @@ export function ActivityFeed({
           />
         ))}
 
+      {/* ─── Places ───────────────────────────────────────────── */}
       {activeTab === 'places' &&
         (isCompanyAdmin ? (
           <AdminPlacesFeed
-            loadActivities={loadPlacesActivities}
-            onAddActivity={handleAddActivity}
-            onFlagActivity={handleFlagActivity}
             onFeatureActivity={handleFeatureActivity}
-            userInterests={userInterests}
-            joinedActivityIds={joinedActivityIds}
+            refreshKey={refreshKey}
           />
         ) : (
-          <EmployeePlacesFeed
-            loadActivities={loadPlacesActivities}
-            onJoinActivity={handleJoinActivity}
-            onFlagActivity={handleFlagActivity}
-            userInterests={userInterests}
-            joinedActivityIds={joinedActivityIds}
-          />
+          <EmployeePlacesFeed />
         ))}
     </div>
   );

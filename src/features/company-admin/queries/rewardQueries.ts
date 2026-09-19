@@ -1,3 +1,5 @@
+// src/features/company-admin/queries/rewardQueries.ts
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rewardService } from '../services/rewardService';
 import type { CreateRewardData, UpdateRewardData } from '../types/reward.types';
@@ -5,13 +7,17 @@ import type { CreateRewardData, UpdateRewardData } from '../types/reward.types';
 export const rewardKeys = {
   all: ['rewards'] as const,
   lists: () => [...rewardKeys.all, 'list'] as const,
-  list: (organizationId: string, filters?: any) => [...rewardKeys.lists(), organizationId, filters] as const,
+  list: (organizationId: string, filters?: any) =>
+    [...rewardKeys.lists(), organizationId, filters] as const,
   details: () => [...rewardKeys.all, 'detail'] as const,
   detail: (id: string) => [...rewardKeys.details(), id] as const,
 };
 
 // Get all rewards
-export function useRewards(organizationId: string, filters?: { status?: string; category?: string }) {
+export function useRewards(
+  organizationId: string,
+  filters?: { status?: string; category?: string }
+) {
   return useQuery({
     queryKey: rewardKeys.list(organizationId, filters),
     queryFn: () => rewardService.getRewards(organizationId, filters),
@@ -38,7 +44,10 @@ export function useCreateReward() {
     mutationFn: (data: CreateRewardData) =>
       rewardService.createReward(data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: rewardKeys.list(variables.organization_id) });
+      queryClient.invalidateQueries({
+        queryKey: rewardKeys.list(variables.organization_id),
+      });
+      queryClient.invalidateQueries({ queryKey: rewardKeys.lists() });
     },
   });
 }
@@ -62,8 +71,7 @@ export function useDeleteReward() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) =>
-      rewardService.deleteReward(id),
+    mutationFn: (id: string) => rewardService.deleteReward(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: rewardKeys.lists() });
     },
@@ -93,6 +101,7 @@ export function useUploadRewardImage() {
       rewardService.uploadImage(rewardId, file),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: rewardKeys.detail(variables.rewardId) });
+      queryClient.invalidateQueries({ queryKey: rewardKeys.lists() });
     },
   });
 }
@@ -102,10 +111,10 @@ export function useRemoveRewardImage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (rewardId: string) =>
-      rewardService.removeImage(rewardId),
+    mutationFn: (rewardId: string) => rewardService.removeImage(rewardId),
     onSuccess: (_, rewardId) => {
       queryClient.invalidateQueries({ queryKey: rewardKeys.detail(rewardId) });
+      queryClient.invalidateQueries({ queryKey: rewardKeys.lists() });
     },
   });
 }

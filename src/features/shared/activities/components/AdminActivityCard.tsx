@@ -18,7 +18,13 @@ interface AdminActivityCardProps {
   isSpotlight?: boolean;
 }
 
-function getCategoryStyle(categoryName?: string): string {
+/* ─── Interest helpers (fall back to legacy category) ─── */
+
+/**
+ * Returns a badge style string based on the interest name.
+ * Prefers `activity.interest`, falls back to `activity.category`.
+ */
+function getInterestStyle(name?: string | null): string {
   const map: Record<string, string> = {
     sports: 'bg-blue-500/10 text-blue-600 border-blue-200',
     wellness: 'bg-emerald-500/10 text-emerald-600 border-emerald-200',
@@ -30,10 +36,13 @@ function getCategoryStyle(categoryName?: string): string {
     outdoor: 'bg-orange-500/10 text-orange-600 border-orange-200',
     hobby: 'bg-violet-500/10 text-violet-600 border-violet-200',
   };
-  return map[categoryName?.toLowerCase() || ''] || 'bg-slate-500/10 text-slate-600 border-slate-200';
+  return (
+    map[name?.toLowerCase() || ''] ||
+    'bg-slate-500/10 text-slate-600 border-slate-200'
+  );
 }
 
-function getCategoryIcon(categoryName?: string): string {
+function getInterestIcon(name?: string | null): string {
   const map: Record<string, string> = {
     sports: '⚽',
     wellness: '🧘',
@@ -45,7 +54,34 @@ function getCategoryIcon(categoryName?: string): string {
     outdoor: '🏔️',
     hobby: '🎯',
   };
-  return map[categoryName?.toLowerCase() || ''] || '📌';
+  return map[name?.toLowerCase() || ''] || '📌';
+}
+
+/**
+ * Resolve the display name for an activity.
+ * Priority: interest · sub-interest → interest → legacy category → Uncategorized
+ */
+function resolveInterestLabel(activity: any): string | null {
+  const interestName = activity?.interest?.name;
+  const subName = activity?.sub_interest?.name;
+  const categoryName = activity?.category?.name;
+
+  if (interestName && subName) return `${interestName} · ${subName}`;
+  if (interestName) return interestName;
+  if (categoryName) return categoryName;
+  return null;
+}
+
+/**
+ * Resolve the icon for an activity.
+ * Priority: interest.icon → interest name match → legacy category icon → 📌
+ */
+function resolveInterestIcon(activity: any): string {
+  if (activity?.interest?.icon) return activity.interest.icon;
+  if (activity?.interest?.name) return getInterestIcon(activity.interest.name);
+  if (activity?.category?.icon) return activity.category.icon;
+  if (activity?.category?.name) return getInterestIcon(activity.category.name);
+  return '📌';
 }
 
 function formatEventDate(iso?: string | null): string {
@@ -77,8 +113,10 @@ export function AdminActivityCard({
   const [isUpdating, setIsUpdating] = useState(false);
 
   const points = activity.points ?? 0;
-  const categoryName = activity.category?.name;
-  const organizerName = (activity as any).organization?.name || 'Global';
+  const interestLabel = resolveInterestLabel(activity);
+  const interestIcon = resolveInterestIcon(activity);
+  const organizerName =
+    (activity as any).organization?.name || 'Global';
 
   const statusStyle: Record<string, string> = {
     draft: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -132,7 +170,7 @@ export function AdminActivityCard({
                 : 'from-slate-100 via-slate-50 to-white'
             )}
           >
-            <span className="text-6xl">{getCategoryIcon(categoryName)}</span>
+            <span className="text-6xl">{interestIcon}</span>
           </div>
         )}
 
@@ -189,7 +227,7 @@ export function AdminActivityCard({
 
       {/* ─────────────────────────────── CONTENT ─────────────────────────────── */}
       <CardContent className="space-y-3 p-5">
-        {/* Organizer row */}
+        {/* Organizer row + interest badge */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600">
@@ -205,14 +243,21 @@ export function AdminActivityCard({
             />
           </div>
 
-          {categoryName && (
+          {/* ✅ Interest badge (replaces old category badge) */}
+          {interestLabel ? (
             <span
               className={cn(
                 'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
-                getCategoryStyle(categoryName)
+                getInterestStyle(
+                  activity.interest?.name || activity.category?.name
+                )
               )}
             >
-              {categoryName}
+              {interestLabel}
+            </span>
+          ) : (
+            <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
+              Uncategorized
             </span>
           )}
         </div>

@@ -1,83 +1,195 @@
 // src/features/platform-admin/components/RewardsManager/RewardsManager.tsx
 
 import { useState, useEffect, useRef } from 'react';
+import {
+  Gift,
+  Plus,
+  Trash2,
+  Globe,
+  Wallet,
+  Coffee,
+  Shirt,
+  Compass,
+  GraduationCap,
+  Calendar,
+  Sparkles,
+  Heart,
+  X,
+  Search,
+  Settings,
+  Check,
+  ChevronDown,
+  KeyRound,
+  Link2,
+  Plug,
+  LucideIcon,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/Dialog';
-import { LucideIcon } from '@/components/ui/LucideIcon';
+import { useAuth } from '@/app/providers/AuthProvider';
+import { LoadingScreen } from '@/components/feedback/LoadingScreen';
+import { FundPoolModal } from '@/features/company-admin/rewards/components/FundPoolModal';
+import { GlobalApiCatalogModal } from '@/features/company-admin/rewards/components/GlobalApiCatalogModal';
+import { cn } from '@/lib/utils';
+
+// ─── Types ────────────────────────────────────────────────────────────
+
+type ProviderKey =
+  | 'Digital Vouchers'
+  | 'Brand Catalog'
+  | 'Corporate Gateway'
+  | 'Custom Internal';
+
+type RewardCategorySlug =
+  | 'gift_card'
+  | 'merchandise'
+  | 'experience'
+  | 'training'
+  | 'pto'
+  | 'company_benefit'
+  | 'charitable';
 
 interface Reward {
   id: string;
   title: string;
   description: string;
-  points_cost: number;
-  category: string;
-  stock: number;
-  icon: string;
-  photo: string | null;
-  provider: string;
-  delivery_method: string;
+  points_required: number;
+  category: RewardCategorySlug | string;
+  stock: number | null;
+  image_url: string | null;
+  status: string;
+  source: string;
   organization_id: string | null;
+  created_by: string;
   created_at: string;
-  organization?: { name: string } | null;
-  is_global?: boolean;
+  updated_at: string;
 }
 
+interface RewardsIntegrationConfig {
+  activeProvider: ProviderKey;
+  apiKey: string;
+  environment: 'production' | 'sandbox';
+  webhookUrl: string;
+  autoFulfillDigitalCards: boolean;
+  prepaidAccountBalance: number;
+  connectedAt: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────
+
+const PROVIDER_OPTIONS: {
+  key: ProviderKey;
+  label: string;
+  sub: string;
+  testLabel: string;
+}[] = [
+  {
+    key: 'Digital Vouchers',
+    label: 'Digital Vouchers API',
+    sub: 'Global Digital Vouchers',
+    testLabel: 'Test Digital Vouchers API Ping',
+  },
+  {
+    key: 'Brand Catalog',
+    label: 'Direct Brand Catalog API',
+    sub: 'Brand Gift Cards',
+    testLabel: 'Test Brand Catalog Ping',
+  },
+  {
+    key: 'Corporate Gateway',
+    label: 'Enterprise Corporate Gateway',
+    sub: 'Global Direct Vouchers',
+    testLabel: 'Test Corporate Gateway Ping',
+  },
+  {
+    key: 'Custom Internal',
+    label: 'Custom Internal Fulfillment',
+    sub: 'Internal Company Perks',
+    testLabel: 'Test Internal Fulfillment Ping',
+  },
+];
+
+const CATEGORY_OPTIONS: { value: RewardCategorySlug; label: string }[] = [
+  { value: 'gift_card', label: 'Gift Card' },
+  { value: 'merchandise', label: 'Merchandise' },
+  { value: 'experience', label: 'Experience' },
+  { value: 'training', label: 'Training' },
+  { value: 'pto', label: 'PTO' },
+  { value: 'company_benefit', label: 'Company Benefit' },
+  { value: 'charitable', label: 'Charitable' },
+];
+
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  gift_card: Coffee,
+  merchandise: Shirt,
+  experience: Compass,
+  training: GraduationCap,
+  pto: Calendar,
+  company_benefit: Sparkles,
+  charitable: Heart,
+};
+
+const DEFAULT_CONFIG: RewardsIntegrationConfig = {
+  activeProvider: 'Digital Vouchers',
+  apiKey: '',
+  environment: 'sandbox',
+  webhookUrl: 'https://api.app.com/webhooks/digitalcards',
+  autoFulfillDigitalCards: true,
+  prepaidAccountBalance: 0,
+  connectedAt: new Date().toISOString(),
+};
+
+// ─── Component ────────────────────────────────────────────────────────
+
 export function RewardsManager() {
+  const { user } = useAuth();
+
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState<string>('All');
-  const [filterScope, setFilterScope] = useState<'All' | 'Global' | 'Organization'>('All');
-  
-  // Create dialog state
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isLoadingCreate, setIsLoadingCreate] = useState(false);
-  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [filterCategory, setFilterCategory] = useState<string>('All Categories');
+
+  const [config, setConfig] = useState<RewardsIntegrationConfig>(() => {
+    try {
+      const saved = localStorage.getItem('rewardsConfig');
+      return saved ? { ...DEFAULT_CONFIG, ...JSON.parse(saved) } : DEFAULT_CONFIG;
+    } catch {
+      return DEFAULT_CONFIG;
+    }
+  });
+
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const [isUploading, setIsUploading] = useState(false);
+  const [imagePreview, setImagePreview] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
+  const [isFundPoolOpen, setIsFundPoolOpen] = useState(false);
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    organization_id: '',
-    points_cost: 100,
-    category: 'Voucher' as 'Voucher' | 'Experience' | 'Company Swag' | 'Perk',
+    category: 'gift_card' as RewardCategorySlug,
+    points_required: 100,
     stock: 10,
-    icon: 'Gift',
-    photo: '',
-    provider: 'Digital Voucher' as 'Digital Voucher' | 'Brand Catalog' | 'Corporate Gateway' | 'Custom Internal',
-    delivery_method: 'instant_digital' as 'instant_digital' | 'manual_fulfillment',
-    is_global: true,
   });
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('rewardsConfig', JSON.stringify(config));
+  }, [config]);
 
   const fetchRewards = async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('rewards')
-        .select(`
-          *,
-          organization:organization_id(name)
-        `)
-        .or('organization_id.is.null,organization_id.not.is.null')
+        .select('*')
+        .is('organization_id', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      const mappedData = (data || []).map((item: any) => ({
-        ...item,
-        is_global: item.organization_id === null,
-      }));
-      
-      setRewards(mappedData as unknown as Reward[]);
+      setRewards((data || []) as Reward[]);
     } catch (error) {
       console.error('Error fetching rewards:', error);
     } finally {
@@ -85,686 +197,719 @@ export function RewardsManager() {
     }
   };
 
-  const fetchOrganizations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('id, name')
-        .neq('slug', 'platform')
-        .order('name');
-      
-      if (error) throw error;
-      setOrganizations(data || []);
-    } catch (error) {
-      console.error('Error fetching organizations:', error);
-    }
-  };
-
   useEffect(() => {
     fetchRewards();
-    fetchOrganizations();
   }, []);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+  const updateConfig = (patch: Partial<RewardsIntegrationConfig>) => {
+    setConfig((prev) => ({ ...prev, ...patch }));
   };
 
-  const uploadImage = async (rewardId: string): Promise<string | null> => {
-    if (!imageFile) return null;
-    
-    setIsUploading(true);
-    try {
-      const fileExt = imageFile.name.split('.').pop();
-      const fileName = `reward-${rewardId}-${Date.now()}.${fileExt}`;
-      const filePath = `rewards/${fileName}`;
+  const handleFundPool = (amount: number) => {
+    setConfig((prev) => ({
+      ...prev,
+      prepaidAccountBalance: prev.prepaidAccountBalance + amount,
+    }));
+  };
 
-      const { error: uploadError } = await supabase.storage
-        .from('reward-images')
-        .upload(filePath, imageFile);
+  const handlePing = () => {
+    updateConfig({ connectedAt: new Date().toISOString() });
+  };
 
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('reward-images')
-        .getPublicUrl(filePath);
-
-      return urlData.publicUrl;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      return null;
-    } finally {
-      setIsUploading(false);
-    }
+  const handleCreateReset = () => {
+    setFormData({
+      title: '',
+      description: '',
+      category: 'gift_card',
+      points_required: 100,
+      stock: 10,
+    });
+    setImageFile(null);
+    setImagePreview('');
+    setSaveError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(false);
-    setIsLoadingCreate(true);
+    if (!user?.id) return;
+    setIsSaving(true);
+    setSaveError(null);
 
     try {
-      if (!formData.title.trim()) {
-        setError('Reward title is required');
-        setIsLoadingCreate(false);
-        return;
-      }
+      const payload: Record<string, any> = {
+        title: formData.title.trim(),
+        description: formData.description.trim() || '',
+        category: formData.category,
+        points_required: formData.points_required,
+        stock: formData.stock,
+        organization_id: null,
+        status: 'draft',
+        source: 'manual',
+        created_by: user.id,
+        image_url: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-      const orgId = formData.organization_id || null;
-
-      const { data, error } = await supabase
+      const { data: created, error } = await supabase
         .from('rewards')
-        .insert({
-          title: formData.title.trim(),
-          description: formData.description.trim() || null,
-          organization_id: orgId,
-          points_cost: formData.points_cost,
-          category: formData.category,
-          stock: formData.stock,
-          icon: formData.icon || 'Gift',
-          photo: formData.photo || null,
-          provider: formData.provider,
-          delivery_method: formData.delivery_method,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
+        .insert(payload)
         .select()
         .single();
 
       if (error) throw error;
 
-      // Upload image if present
-      if (imageFile && data) {
-        const imageUrl = await uploadImage(data.id);
-        if (imageUrl) {
-          await supabase
-            .from('rewards')
-            .update({ photo: imageUrl })
-            .eq('id', data.id);
+      if (imageFile && created) {
+        const ext = imageFile.name.split('.').pop();
+        const path = `rewards/${created.id}-${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('reward-images')
+          .upload(path, imageFile, { contentType: imageFile.type, upsert: false });
+        if (!upErr) {
+          const { data: urlData } = supabase.storage
+            .from('reward-images')
+            .getPublicUrl(path);
+          if (urlData?.publicUrl) {
+            await supabase
+              .from('rewards')
+              .update({ image_url: urlData.publicUrl })
+              .eq('id', created.id);
+          }
         }
       }
 
-      setSuccess(true);
-      setFormData({
-        title: '',
-        description: '',
-        organization_id: '',
-        points_cost: 100,
-        category: 'Voucher',
-        stock: 10,
-        icon: 'Gift',
-        photo: '',
-        provider: 'Digital Voucher',
-        delivery_method: 'instant_digital',
-        is_global: true,
-      });
-      setImagePreview('');
-      setImageFile(null);
-
-      setTimeout(() => {
-        setIsCreateDialogOpen(false);
-        setSuccess(false);
-        fetchRewards();
-      }, 1500);
-
-    } catch (error: any) {
-      console.error('Error creating reward:', error);
-      setError(error.message || 'Failed to create reward');
+      setIsCreateOpen(false);
+      handleCreateReset();
+      fetchRewards();
+    } catch (err: any) {
+      console.error('Error creating reward:', err);
+      setSaveError(err.message || 'Failed to create reward');
     } finally {
-      setIsLoadingCreate(false);
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this reward?')) return;
-    
+    if (!confirm('Delete this reward?')) return;
     try {
-      const { error } = await supabase
-        .from('rewards')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('rewards').delete().eq('id', id);
       if (error) throw error;
       fetchRewards();
-    } catch (error) {
-      console.error('Error deleting reward:', error);
+    } catch (err) {
+      console.error('Error deleting reward:', err);
     }
   };
 
-  const handleReplenishStock = async (id: string, amount: number = 10) => {
-    const reward = rewards.find(r => r.id === id);
-    if (!reward) return;
-
+  const handleAddStock = async (reward: Reward, amount: number = 25) => {
     try {
       const { error } = await supabase
         .from('rewards')
-        .update({ 
-          stock: reward.stock + amount,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-      
+        .update({ stock: (reward.stock || 0) + amount })
+        .eq('id', reward.id);
       if (error) throw error;
       fetchRewards();
-    } catch (error) {
-      console.error('Error replenishing stock:', error);
+    } catch (err) {
+      console.error('Error updating stock:', err);
     }
   };
 
-  const categories = ['All', 'Voucher', 'Experience', 'Company Swag', 'Perk'];
-
-  const filteredRewards = rewards.filter(reward => {
-    const matchesSearch = reward.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          reward.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === 'All' || reward.category === filterCategory;
-    const matchesScope = filterScope === 'All' || 
-                         (filterScope === 'Global' && reward.is_global) ||
-                         (filterScope === 'Organization' && !reward.is_global);
-    return matchesSearch && matchesCategory && matchesScope;
+  const filteredRewards = rewards.filter((r) => {
+    const matchSearch =
+      !searchTerm ||
+      r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchCategory =
+      filterCategory === 'All Categories' ||
+      CATEGORY_OPTIONS.find((c) => c.value === r.category)?.label === filterCategory;
+    return matchSearch && matchCategory;
   });
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'Voucher': return 'bg-emerald-100 text-emerald-700';
-      case 'Experience': return 'bg-purple-100 text-purple-700';
-      case 'Company Swag': return 'bg-blue-100 text-blue-700';
-      case 'Perk': return 'bg-amber-100 text-amber-700';
-      default: return 'bg-slate-100 text-slate-700';
-    }
-  };
+  const activeProviderLabel =
+    PROVIDER_OPTIONS.find((p) => p.key === config.activeProvider)?.testLabel ||
+    'Test API Ping';
 
-  const iconOptions = [
-    'Gift', 'Trophy', 'Star', 'Heart', 'Coffee', 'Music', 'Camera', 
-    'Book', 'Bike', 'Plane', 'Car', 'Home', 'ShoppingBag', 'Package'
-  ];
+  if (isLoading) return <LoadingScreen />;
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Global Rewards</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage rewards across all organizations ({rewards.length} total)
-            <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-              {rewards.filter(r => r.is_global).length} Global
-            </span>
-          </p>
-        </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="flex items-center gap-1.5">
-              <LucideIcon name="Plus" size={14} />
-              Create Reward
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg p-0 overflow-hidden max-h-[90vh]">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-amber-900 to-amber-800 px-6 py-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center">
-                  <LucideIcon name="Gift" size={20} className="text-amber-400" />
-                </div>
-                <div>
-                  <DialogTitle className="text-white text-lg font-bold">
-                    Create New Reward
-                  </DialogTitle>
-                  <p className="text-amber-300 text-xs mt-0.5">
-                    {formData.organization_id ? 'For a specific organization' : 'Global - Available to all organizations'}
-                  </p>
-                </div>
-              </div>
+    <div className="space-y-6 pb-12">
+      {/* ─── HERO ─────────────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-8 py-7 text-white shadow-lg">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/70 ring-1 ring-white/10">
+                Fulfillment Provider Control
+              </span>
+              <span className="text-xs font-medium text-white/60">
+                Active API:{' '}
+                <span className="font-bold text-white">
+                  {config.activeProvider}
+                </span>{' '}
+                <span className="text-white/40">
+                  ({config.environment.toUpperCase()})
+                </span>
+              </span>
             </div>
 
-            {/* Form Body */}
-            <div className="px-6 py-5 overflow-y-auto">
-              {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5">
-                  <LucideIcon name="AlertCircle" size={16} className="text-red-500 shrink-0 mt-0.5" />
-                  <span className="text-sm text-red-700">{error}</span>
-                </div>
-              )}
+            <h1 className="mt-4 flex items-center gap-2 text-2xl font-extrabold tracking-tight">
+              <Gift className="h-6 w-6 text-indigo-300" />
+              Rewards Fulfillment Partners &amp; API Gateway
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70">
+              As App Owner, configure the primary digital card fulfillment provider API,
+              manage access keys, set instant e-voucher auto-dispatch rules, and fund the
+              platform prepaid reward balance.
+            </p>
+          </div>
 
-              {success && (
-                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5">
-                  <LucideIcon name="CheckCircle" size={16} className="text-emerald-500 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-sm text-emerald-700 font-medium">Reward created successfully!</span>
-                    <p className="text-xs text-emerald-600 mt-0.5">Redirecting...</p>
-                  </div>
-                </div>
-              )}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 backdrop-blur-sm">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+                Prepaid Funding Balance
+              </p>
+              <p className="mt-1 text-2xl font-extrabold tracking-tight text-emerald-300">
+                ${config.prepaidAccountBalance.toFixed(2)}{' '}
+                <span className="text-sm font-semibold text-emerald-400">USD</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFundPoolOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-600"
+            >
+              <Wallet className="h-4 w-4" />
+              Fund Pool
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCatalogOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-indigo-700"
+            >
+              <Globe className="h-4 w-4" />
+              Global API Catalog
+            </button>
+          </div>
+        </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Organization Selection - Optional */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Organization <span className="text-xs font-normal text-slate-400">(optional - leave empty for global)</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                      <LucideIcon name="Building2" size={16} />
-                    </div>
-                    <select
-                      value={formData.organization_id}
-                      onChange={(e) => setFormData({ ...formData, organization_id: e.target.value, is_global: !e.target.value })}
-                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">🌍 Global - All Organizations</option>
-                      {organizations.map((org) => (
-                        <option key={org.id} value={org.id}>🏢 {org.name}</option>
-                      ))}
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                      <LucideIcon name="ChevronDown" size={16} />
-                    </div>
-                  </div>
-                  {formData.organization_id && (
-                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
-                      <LucideIcon name="Info" size={12} />
-                      This reward will only be visible to employees of this organization
-                    </p>
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+          <div className="mb-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-white/70">
+            <Settings className="h-3.5 w-3.5" />
+            Select Primary Fulfillment Provider API
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {PROVIDER_OPTIONS.map((opt) => {
+              const isActive = config.activeProvider === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => updateConfig({ activeProvider: opt.key })}
+                  className={cn(
+                    'flex flex-col items-start gap-1 rounded-2xl border px-4 py-4 text-left transition-all',
+                    isActive
+                      ? 'border-indigo-400 bg-indigo-500/10 ring-2 ring-indigo-400/30'
+                      : 'border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'
                   )}
-                </div>
-
-                {/* Title */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Reward Title <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                      <LucideIcon name="FileText" size={16} />
-                    </div>
-                    <Input
-                      value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="e.g., $25 Starbucks Gift Card"
-                      className="pl-9 py-2.5 text-sm border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Description
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-3 text-slate-400">
-                      <LucideIcon name="AlignLeft" size={16} />
-                    </div>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Describe the reward..."
-                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all min-h-[60px] resize-y"
-                    />
-                  </div>
-                </div>
-
-                {/* Points & Stock */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Points Cost
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <LucideIcon name="Star" size={16} />
-                      </div>
-                      <Input
-                        type="number"
-                        value={formData.points_cost}
-                        onChange={(e) => setFormData({ ...formData, points_cost: parseInt(e.target.value) || 0 })}
-                        min={1}
-                        className="pl-9 py-2.5 text-sm border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Stock
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <LucideIcon name="Package" size={16} />
-                      </div>
-                      <Input
-                        type="number"
-                        value={formData.stock}
-                        onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
-                        min={0}
-                        className="pl-9 py-2.5 text-sm border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Category & Delivery */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Category
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <LucideIcon name="Tag" size={16} />
-                      </div>
-                      <select
-                        value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                        className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all appearance-none cursor-pointer"
-                      >
-                        <option value="Voucher">🎫 Voucher</option>
-                        <option value="Experience">🎯 Experience</option>
-                        <option value="Company Swag">👕 Company Swag</option>
-                        <option value="Perk">✨ Perk</option>
-                      </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <LucideIcon name="ChevronDown" size={16} />
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Delivery Method
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <LucideIcon name="Truck" size={16} />
-                      </div>
-                      <select
-                        value={formData.delivery_method}
-                        onChange={(e) => setFormData({ ...formData, delivery_method: e.target.value as any })}
-                        className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all appearance-none cursor-pointer"
-                      >
-                        <option value="instant_digital">⚡ Instant Digital</option>
-                        <option value="manual_fulfillment">📦 Manual Fulfillment</option>
-                      </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                        <LucideIcon name="ChevronDown" size={16} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Icon Selection */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Icon
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {iconOptions.map((icon) => (
-                      <button
-                        key={icon}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, icon })}
-                        className={`p-2 rounded-lg border transition-all ${
-                          formData.icon === icon
-                            ? 'border-amber-500 bg-amber-50 text-amber-700'
-                            : 'border-slate-200 hover:border-amber-300 hover:bg-amber-50/50'
-                        }`}
-                      >
-                        <LucideIcon name={icon as any} size={20} />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Image Upload */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Photo <span className="text-xs font-normal text-slate-400">(optional)</span>
-                  </label>
-                  <div className="flex items-center gap-4">
-                    {(imagePreview || formData.photo) ? (
-                      <div className="relative">
-                        <img 
-                          src={imagePreview || formData.photo} 
-                          alt="Reward" 
-                          className="h-24 w-24 object-cover rounded-lg border"
-                        />
-                        {!imagePreview && formData.photo && (
-                          <button
-                            type="button"
-                            onClick={() => setFormData({ ...formData, photo: '' })}
-                            className="absolute -top-2 -right-2 rounded-full bg-red-500 p-1 text-white text-xs w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                          >
-                            ×
-                          </button>
-                        )}
-                        {imagePreview && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setImagePreview('');
-                              setImageFile(null);
-                            }}
-                            className="absolute -top-2 -right-2 rounded-full bg-red-500 p-1 text-white text-xs w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="h-24 w-24 rounded-lg border-2 border-dashed border-slate-200 flex items-center justify-center text-muted-foreground text-xs">
-                        No image
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-2">
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleImageChange}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 transition-colors"
-                      >
-                        Choose Image
-                      </button>
-                      <p className="text-xs text-muted-foreground">Max 5MB. JPG, PNG, GIF</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Provider */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                    Provider
-                  </label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                      <LucideIcon name="Store" size={16} />
-                    </div>
-                    <select
-                      value={formData.provider}
-                      onChange={(e) => setFormData({ ...formData, provider: e.target.value as any })}
-                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="Digital Voucher">Digital Voucher</option>
-                      <option value="Brand Catalog">Brand Catalog</option>
-                      <option value="Corporate Gateway">Corporate Gateway</option>
-                      <option value="Custom Internal">Custom Internal</option>
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                      <LucideIcon name="ChevronDown" size={16} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="border-t border-slate-200 pt-4 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreateDialogOpen(false);
-                      setImagePreview('');
-                      setImageFile(null);
-                    }}
-                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <Button
-                    type="submit"
-                    disabled={isLoadingCreate || success || isUploading}
-                    className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-semibold rounded-lg shadow-sm shadow-amber-500/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isLoadingCreate || isUploading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        {isUploading ? 'Uploading...' : 'Creating...'}
-                      </>
-                    ) : success ? (
-                      <>
-                        <LucideIcon name="Check" size={16} />
-                        Created!
-                      </>
-                    ) : (
-                      <>
-                        <LucideIcon name="Plus" size={16} />
-                        Create Reward
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="Search rewards..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-64"
-        />
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground mr-1">Scope:</span>
-          {(['All', 'Global', 'Organization'] as const).map((scope) => (
-            <Button
-              key={scope}
-              variant={filterScope === scope ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterScope(scope)}
-              className="text-xs"
-            >
-              {scope}
-            </Button>
-          ))}
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground mr-1">Category:</span>
-          {categories.map((cat) => (
-            <Button
-              key={cat}
-              variant={filterCategory === cat ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterCategory(cat)}
-              className="text-xs"
-            >
-              {cat}
-            </Button>
-          ))}
-        </div>
-        <Button variant="outline" size="sm" onClick={fetchRewards} className="ml-auto">
-          <LucideIcon name="RefreshCw" size={14} className="mr-1.5" />
-          Refresh
-        </Button>
-      </div>
-
-      {/* Rewards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {isLoading ? (
-          <div className="col-span-3 text-center py-8 text-muted-foreground">
-            Loading rewards...
-          </div>
-        ) : filteredRewards.length === 0 ? (
-          <div className="col-span-3 text-center py-8 text-muted-foreground">
-            {searchTerm ? 'No rewards match your search' : 'No rewards found. Create one to get started.'}
-          </div>
-        ) : (
-          filteredRewards.map((reward) => (
-            <Card key={reward.id}>
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-base">{reward.title}</CardTitle>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge className={getCategoryColor(reward.category)} variant="secondary">
-                        {reward.category}
-                      </Badge>
-                      {reward.is_global ? (
-                        <Badge variant="success" className="text-xs">🌍 Global</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">🏢 Specific</Badge>
-                      )}
-                    </div>
-                  </div>
-                  <Badge variant="success">{reward.points_cost} PTS</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {reward.photo && (
-                  <div className="mb-3 rounded-lg overflow-hidden h-32">
-                    <img 
-                      src={reward.photo} 
-                      alt={reward.title} 
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                )}
-                <p className="text-sm text-muted-foreground line-clamp-2">
-                  {reward.description || 'No description'}
-                </p>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                  <div className="text-sm">
-                    Stock: <strong>{reward.stock}</strong>
-                    {reward.organization?.name && (
-                      <span className="block text-xs text-muted-foreground">
-                        {reward.organization.name}
+                >
+                  <div className="flex w-full items-start justify-between gap-2">
+                    <span className="text-sm font-bold text-white">
+                      {opt.label}
+                    </span>
+                    {isActive && (
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500">
+                        <Check className="h-3 w-3 text-white" />
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      onClick={() => handleReplenishStock(reward.id, 10)}
+                  <span className="text-[11px] text-white/50">{opt.sub}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+            <div>
+              <label className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/60">
+                <KeyRound className="h-3 w-3" />
+                API Access Secret Key
+              </label>
+              <input
+                type="password"
+                value={config.apiKey}
+                onChange={(e) => updateConfig({ apiKey: e.target.value })}
+                placeholder="••••••••••••••••••••••••••••••"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-indigo-400 focus:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/60">
+                <Plug className="h-3 w-3" />
+                Gateway Environment
+              </label>
+              <div className="relative">
+                <select
+                  value={config.environment}
+                  onChange={(e) =>
+                    updateConfig({
+                      environment: e.target.value as 'production' | 'sandbox',
+                    })
+                  }
+                  className="w-full cursor-pointer appearance-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 pr-10 text-sm text-white focus:border-indigo-400 focus:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                >
+                  <option value="sandbox" className="bg-slate-900">
+                    Sandbox / Staging Environment
+                  </option>
+                  <option value="production" className="bg-slate-900">
+                    Production Environment
+                  </option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/60">
+                <Link2 className="h-3 w-3" />
+                Delivery Status Webhook URL
+              </label>
+              <input
+                type="text"
+                value={config.webhookUrl}
+                onChange={(e) => updateConfig({ webhookUrl: e.target.value })}
+                placeholder="https://api.app.com/webhooks/digitalcards"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-indigo-400 focus:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() =>
+                  updateConfig({
+                    autoFulfillDigitalCards: !config.autoFulfillDigitalCards,
+                  })
+                }
+                className={cn(
+                  'relative h-6 w-11 shrink-0 rounded-full transition-colors',
+                  config.autoFulfillDigitalCards ? 'bg-indigo-500' : 'bg-white/20'
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform',
+                    config.autoFulfillDigitalCards ? 'translate-x-5' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+              <div>
+                <p className="text-sm font-bold text-white">
+                  Instant Digital Card Auto-Fulfillment
+                </p>
+                <p className="text-[11px] text-white/50">
+                  Dispatch digital vouchers automatically on employee redemption
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handlePing}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700"
+              >
+                <Check className="h-4 w-4" />
+                {activeProviderLabel}
+              </button>
+              <p className="text-[11px] text-white/50">
+                Connected:{' '}
+                <span className="font-semibold text-white/80">
+                  {new Date(config.connectedAt).toLocaleDateString()}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── TWO-COLUMN SECTION ──────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-indigo-700 ring-1 ring-indigo-100">
+              App Owner Privilege
+            </span>
+
+            <div className="mt-4 flex items-start justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-lg font-extrabold uppercase tracking-tight text-slate-900">
+                <Plus className="h-5 w-5 text-indigo-500" />
+                Create Custom Global Reward
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen((v) => !v)}
+                className="shrink-0 rounded-xl bg-indigo-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-indigo-700"
+              >
+                {isCreateOpen ? 'Collapse' : '+ Expand Form'}
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-relaxed text-slate-500">
+              Design custom reward vouchers, company merchandise, physical perks, or
+              experiences. Custom rewards created by the App Owner will be
+              immediately published across{' '}
+              <span className="font-bold text-slate-700">all companies</span>,{' '}
+              <span className="font-bold text-slate-700">employers</span>, and{' '}
+              <span className="font-bold text-slate-700">employees platform-wide</span>.
+            </p>
+          </div>
+
+          {isCreateOpen && (
+            <div
+              id="platform-reward-form"
+              className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-indigo-900 to-indigo-800 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <Gift className="h-4 w-4 text-indigo-200" />
+                  <h3 className="text-sm font-bold text-white">
+                    New Global Reward
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreateOpen(false);
+                    handleCreateReset();
+                  }}
+                  className="text-indigo-300 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4 p-5">
+                {saveError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-700">
+                    {saveError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Title
+                  </label>
+                  <input
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    required
+                    placeholder="e.g., $10 Coffee Voucher"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Description
+                  </label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    placeholder="What employees get and how they redeem it..."
+                    className="min-h-[80px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Category
+                    </label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          category: e.target.value as RewardCategorySlug,
+                        })
+                      }
+                      className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                     >
-                      +10
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="destructive" 
-                      onClick={() => handleDelete(reward.id)}
-                    >
-                      <LucideIcon name="Trash2" size={14} />
-                    </Button>
+                      {CATEGORY_OPTIONS.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Points Cost
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.points_required}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          points_required: parseInt(e.target.value) || 0,
+                        })
+                      }
+                      min={1}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Stock
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.stock}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        stock: parseInt(e.target.value) || 0,
+                      })
+                    }
+                    min={0}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Image
+                  </label>
+                  {imagePreview ? (
+                    <div className="relative mb-2">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="h-36 w-full rounded-xl object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImagePreview('');
+                          setImageFile(null);
+                        }}
+                        className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-xs text-white hover:bg-rose-600"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mb-2 flex h-36 items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
+                      No image selected
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setImageFile(f);
+                        const reader = new FileReader();
+                        reader.onloadend = () =>
+                          setImagePreview(reader.result as string);
+                        reader.readAsDataURL(f);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    {imagePreview ? 'Change Image' : 'Choose Image'}
+                  </button>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreateOpen(false);
+                      handleCreateReset();
+                    }}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {isSaving ? 'Publishing…' : 'Publish Globally'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                <Gift className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-extrabold uppercase tracking-wider text-slate-900">
+                  Platform Active Rewards Catalog ({filteredRewards.length})
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Rewards available to all employees and employers platform-wide
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  {['All Categories', ...CATEGORY_OPTIONS.map((c) => c.label)].map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search rewards..."
+                  className="w-56 rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            {filteredRewards.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/40 py-16 text-center">
+                <Gift className="mx-auto h-10 w-10 text-slate-300" />
+                <p className="mt-3 text-base font-bold text-slate-800">
+                  No rewards yet
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Create your first global reward using the form on the left.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredRewards.map((reward) => {
+                  const CategoryIcon = CATEGORY_ICONS[reward.category] || Gift;
+                  const categoryLabel =
+                    CATEGORY_OPTIONS.find((c) => c.value === reward.category)
+                      ?.label || reward.category;
+
+                  return (
+                    <div
+                      key={reward.id}
+                      className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="relative h-40 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200">
+                        {reward.image_url ? (
+                          <img
+                            src={reward.image_url}
+                            alt={reward.title}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <CategoryIcon className="h-14 w-14 text-slate-300" />
+                          </div>
+                        )}
+
+                        <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-lg bg-slate-900/90 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+                          {reward.points_required} PTS
+                        </span>
+                      </div>
+
+                      <div className="flex flex-1 flex-col gap-2 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
+                          {categoryLabel}
+                        </p>
+                        <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">
+                          {reward.title}
+                        </h3>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">
+                          {reward.description || 'No description provided.'}
+                        </p>
+
+                        <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                          <span className="text-[11px] font-semibold text-slate-600">
+                            Stock:{' '}
+                            <span className="font-bold text-slate-800">
+                              {reward.stock ?? 0}
+                            </span>{' '}
+                            units
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleAddStock(reward, 25)}
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 transition-colors hover:bg-slate-50"
+                            >
+                              +25 Stock
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(reward.id)}
+                              className="rounded-lg border border-rose-200 bg-white p-1.5 text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                              title="Delete reward"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* ─── Modals ────────────────────────────────────────────── */}
+      <FundPoolModal
+        open={isFundPoolOpen}
+        onClose={() => setIsFundPoolOpen(false)}
+        currentBalance={config.prepaidAccountBalance}
+        onConfirm={async (amount) => {
+          handleFundPool(amount);
+        }}
+      />
+      <GlobalApiCatalogModal
+        open={isCatalogOpen}
+        onClose={() => setIsCatalogOpen(false)}
+        onImport={(ids) => console.log('Imported global ids:', ids)}
+      />
     </div>
   );
 }

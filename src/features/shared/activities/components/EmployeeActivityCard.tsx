@@ -17,19 +17,40 @@ interface EmployeeActivityCardProps {
   isJoined?: boolean;
 }
 
-function getCategoryStyle(categoryName?: string): string {
+// ─── Interest resolvers: prefer interest → sub_interest → legacy category ───
+
+function resolveInterestLabel(activity: any): string | null {
+  if (activity?.sub_interest?.name && activity?.interest?.name) {
+    return `${activity.interest.name} · ${activity.sub_interest.name}`;
+  }
+  if (activity?.interest?.name) return activity.interest.name;
+  if (activity?.category?.name) return activity.category.name;
+  return null;
+}
+
+function resolveInterestIcon(activity: any): string {
+  if (activity?.interest?.icon) return activity.interest.icon;
+  if (activity?.category?.icon) return activity.category.icon;
+  return '🎯';
+}
+
+function resolveInterestStyle(activity: any): string {
   const map: Record<string, string> = {
     sports: 'bg-blue-500/10 text-blue-600',
     wellness: 'bg-emerald-500/10 text-emerald-600',
     learning: 'bg-purple-500/10 text-purple-600',
     social: 'bg-amber-500/10 text-amber-700',
     creative: 'bg-pink-500/10 text-pink-600',
+    hobby: 'bg-violet-500/10 text-violet-600',
     professional: 'bg-indigo-500/10 text-indigo-600',
     community: 'bg-teal-500/10 text-teal-600',
     outdoor: 'bg-orange-500/10 text-orange-600',
-    hobby: 'bg-violet-500/10 text-violet-600',
   };
-  return map[categoryName?.toLowerCase() || ''] || 'bg-slate-500/10 text-slate-600';
+  const key =
+    activity?.interest?.name?.toLowerCase() ||
+    activity?.category?.name?.toLowerCase() ||
+    '';
+  return map[key] || 'bg-slate-500/10 text-slate-600';
 }
 
 function formatShortDate(iso?: string | null): string {
@@ -76,7 +97,9 @@ export function EmployeeActivityCard({
 
   const points = activity.points ?? 0;
   const distance = formatDistance(activity.distance_miles);
-  const categoryName = activity.category?.name;
+  const interestLabel = resolveInterestLabel(activity);
+  const interestStyle = resolveInterestStyle(activity);
+  const interestIcon = resolveInterestIcon(activity);
   const organizerName =
     (activity as any).organization?.name || (activity as any).host_name || 'Fun01K';
 
@@ -111,14 +134,15 @@ export function EmployeeActivityCard({
               Spotlight
             </span>
           )}
-          {categoryName && (
+          {interestLabel && (
             <span
               className={cn(
-                'rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                getCategoryStyle(categoryName)
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                interestStyle
               )}
             >
-              {categoryName}
+              <span aria-hidden>{interestIcon}</span>
+              {interestLabel}
             </span>
           )}
         </div>
@@ -142,9 +166,7 @@ export function EmployeeActivityCard({
                   : 'from-slate-100 via-slate-50 to-white'
               )}
             >
-              <span className="text-5xl">
-                {activity.category?.icon || '🎯'}
-              </span>
+              <span className="text-5xl">{interestIcon}</span>
             </div>
           )}
         </div>

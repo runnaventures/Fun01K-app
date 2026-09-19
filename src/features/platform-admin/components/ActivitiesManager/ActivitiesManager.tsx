@@ -1,4 +1,4 @@
-// src/features/platform-admin/components/ActivitiesManager/ActivitiesManager.tsx
+﻿// src/features/platform-admin/components/ActivitiesManager/ActivitiesManager.tsx
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -15,6 +15,8 @@ interface Activity {
   title: string;
   description: string | null;
   category_id: string | null;
+  interest_id?: string | null;
+  sub_interest_id?: string | null;
   type_id: string | null;
   points: number;
   duration: number | null;
@@ -29,6 +31,8 @@ interface Activity {
   image_url?: string | null;
   organization?: { id: string; name: string } | null;
   category?: { id: string; name: string; icon?: string; color?: string } | null;
+  interest?: { id: string; name: string; icon?: string | null; color?: string | null } | null;
+  sub_interest?: { id: string; name: string; slug?: string | null } | null;
   type?: { id: string; name: string } | null;
   is_global?: boolean;
   difficulty?: string;
@@ -53,10 +57,10 @@ export function ActivitiesManager() {
   >('All');
   const [filterScope, setFilterScope] = useState<'All' | 'Global' | 'Organization'>('All');
 
-  // ─── Inline create form toggle ───────────────────────────────────────
+  // ─── Inline create form toggle ─────────────────────────────────────
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // ─── Edit modal state ────────────────────────────────────────────────
+  // ─── Edit modal state ──────────────────────────────────────────────
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -95,6 +99,8 @@ export function ActivitiesManager() {
           *,
           organization:organization_id(id, name),
           category:category_id(id, name, icon, color),
+          interest:interest_id(id, name, icon, color),
+          sub_interest:sub_interest_id(id, name, slug),
           type:type_id(id, name)
         `)
         .order('created_at', { ascending: false });
@@ -149,16 +155,21 @@ export function ActivitiesManager() {
     fetchCategories();
   }, []);
 
-  const getCategoryIcon = (categoryId: string | null) => {
-    if (!categoryId) return '📌';
-    const found = categories.find((c) => c.id === categoryId);
-    return found?.icon || '📌';
+  /** Resolve display name/icon for an activity:
+   *  prefers Interest → Sub-Interest, falls back to legacy Category. */
+  const getInterestIcon = (activity: any) => {
+    if (activity?.interest?.icon) return activity.interest.icon;
+    if (activity?.category?.icon) return activity.category.icon;
+    return '📌';
   };
 
-  const getCategoryName = (categoryId: string | null) => {
-    if (!categoryId) return 'Uncategorized';
-    const found = categories.find((c) => c.id === categoryId);
-    return found?.name || 'Uncategorized';
+  const getInterestName = (activity: any) => {
+    if (activity?.sub_interest?.name && activity?.interest?.name) {
+      return `${activity.interest.name} · ${activity.sub_interest.name}`;
+    }
+    if (activity?.interest?.name) return activity.interest.name;
+    if (activity?.category?.name) return activity.category.name;
+    return 'Uncategorized';
   };
 
   // ═══════════════════════════════════════════════════════════════════
@@ -934,8 +945,8 @@ export function ActivitiesManager() {
 
                     <div className="absolute bottom-4 left-4">
                       <span className="rounded-lg border bg-white/80 px-3 py-1.5 text-xs font-medium backdrop-blur-sm">
-                        {getCategoryIcon(activity.category_id)}{' '}
-                        {getCategoryName(activity.category_id)}
+                        {getInterestIcon(activity)}{' '}
+                        {getInterestName(activity)}
                       </span>
                     </div>
 
@@ -949,16 +960,16 @@ export function ActivitiesManager() {
                   <div className="relative flex h-40 items-center justify-center bg-gradient-to-r from-slate-100 to-slate-200">
                     <div className="text-center">
                       <span className="text-5xl">
-                        {getCategoryIcon(activity.category_id)}
+                        {getInterestIcon(activity)}
                       </span>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {getCategoryName(activity.category_id)}
+                        {getInterestName(activity)}
                       </p>
                     </div>
                     <div className="absolute bottom-4 left-4">
                       <span className="rounded-lg border bg-white/80 px-3 py-1.5 text-xs font-medium">
-                        {getCategoryIcon(activity.category_id)}{' '}
-                        {getCategoryName(activity.category_id)}
+                        {getInterestIcon(activity)}{' '}
+                        {getInterestName(activity)}
                       </span>
                     </div>
                     <div className="absolute bottom-4 right-4">

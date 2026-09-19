@@ -1,26 +1,30 @@
 ﻿// src/features/shared/activities/components/EmployeePlacesFeed.tsx
 
-import { useState, useEffect, useRef } from 'react';
+import { useMemo, useState } from 'react';
+import {
+  MapPin,
+  Search,
+  Coins,
+  Loader2,
+  Check,
+  X,
+  Star,
+  Globe,
+} from 'lucide-react';
 import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
-import { MapPin, Search, Globe, Map, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { EmployeeActivityCard } from './EmployeeActivityCard';
-import type { Activity } from '../types/activity.types';
-
-interface EmployeePlacesFeedProps {
-  loadActivities: (
-    searchTerm?: string,
-    selectedCity?: string,
-    venueType?: string
-  ) => Promise<Activity[]>;
-  onJoinActivity?: (activityId: string) => void;
-  onFlagActivity?: (activityId: string, reason: string) => void;
-  userInterests?: string[];
-  organizationId?: string;
-  joinedActivityIds?: string[];
-}
+import { useAuth } from '@/app/providers/AuthProvider';
+import { useOrganization } from '@/app/providers/OrganizationProvider';
+import { useGooglePlaces, type GooglePlace } from '../hooks/useGooglePlaces';
+import {
+  useEmployeePlaces,
+  useCheckIn,
+  useProfileCity,
+  useSelfCheckinBudget,
+  useSelfCheckIn,
+  type FeaturedPlace,
+} from '../hooks/useEmployeePlaces';
 
 const PRESET_CITIES = [
   'Atlanta',
@@ -29,375 +33,545 @@ const PRESET_CITIES = [
   'Austin',
   'Seattle',
   'Chicago',
-  'All Cities',
+  'Denver',
+  'London',
+  'Toronto',
+  'Berlin',
 ];
 
-const VENUE_TYPES = ['All', 'Wellness', 'Sports', 'Social', 'Hobby', 'Learning'];
+const SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ??
+  'https://bteqcbfdbsmszitaxuiy.supabase.co';
 
-export function EmployeePlacesFeed({
-  loadActivities,
-  onJoinActivity,
-  onFlagActivity,
-  userInterests = [],
-  joinedActivityIds = [],
-}: EmployeePlacesFeedProps) {
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isRefetching, setIsRefetching] = useState(false);
-  const hasLoadedOnce = useRef(false);
+function placeIcon(place: GooglePlace): string {
+  const types = place.types || [];
+  if (types.includes('restaurant') || types.includes('cafe') || types.includes('food')) return '☕';
+  if (types.includes('gym') || types.includes('stadium') || types.includes('sports_complex')) return '⚽';
+  if (types.includes('museum') || types.includes('art_gallery')) return '🎨';
+  if (types.includes('park') || types.includes('tourist_attraction')) return '🌳';
+  if (types.includes('shopping_mall') || types.includes('store')) return '🛍️';
+  return '📍';
+}
 
-  const [selectedCity, setSelectedCity] = useState('Atlanta');
-  const [venueType, setVenueType] = useState('All');
+export function EmployeePlacesFeed() {
+  const { user } = useAuth();
+  const { organizationMember } = useOrganization();
+  const organizationId = organizationMember?.organization_id;
+
+  // ─── City ────────────────────────────────────────────────────────
+  const {
+    city: defaultCity,
+    isLoading: cityLoading,
+    saveCity,
+  } = useProfileCity(user?.id);
+
+  // ─── Featured (admin-curated) — may be empty; that's fine ────────
+  const {
+    places: featured,
+    isLoading: featuredLoading,
+    reload: reloadFeatured,
+  } = useEmployeePlaces(organizationId);
+  const { checkIn: checkInFeatured } = useCheckIn();
+
+  // ─── Self check-in budget ────────────────────────────────────────
+  const { budget, reload: reloadBudget } = useSelfCheckinBudget(
+    user?.id,
+    organizationId
+  );
+  const { selfCheckIn } = useSelfCheckIn();
+
+  // ─── Discover (Google Places by default city) ────────────────────
   const [searchTerm, setSearchTerm] = useState('');
-
-  const [customCities, setCustomCities] = useState<string[]>([]);
-  const [showCustomCity, setShowCustomCity] = useState(false);
-  const [customCity, setCustomCity] = useState('');
-
-  // Google Maps API key (set VITE_GOOGLE_MAPS_PLATFORM_KEY in .env)
-  const googleMapsKey = import.meta.env.VITE_GOOGLE_MAPS_PLATFORM_KEY as
-    | string
-    | undefined;
-
-  // Debounce search
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  useEffect(() => {
+
+  useMemo(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  useEffect(() => {
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, selectedCity, venueType]);
+  const {
+    places: discovered,
+    isLoading: discoveredLoading,
+    error: discoveredError,
+  } = useGooglePlaces({
+    city: defaultCity ?? undefined,
+    keyword: debouncedSearch.trim() || undefined,
+    maxResults: 20,
+    enabled: !!defaultCity,
+  });
 
-  const run = async () => {
-    if (hasLoadedOnce.current) setIsRefetching(true);
-    else setIsInitialLoading(true);
+  // ─── UI state ────────────────────────────────────────────────────
+  const [pendingFeaturedId, setPendingFeaturedId] = useState<string | null>(null);
+  const [pendingDiscoverId, setPendingDiscoverId] = useState<string | null>(null);
+  const [selfCheckedInIds, setSelfCheckedInIds] = useState<Set<string>>(new Set());
+  const [success, setSuccess] = useState<{
+    title: string;
+    points: number;
+    kind: 'featured' | 'self';
+  } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // ─── Featured check-in ───────────────────────────────────────────
+  const handleFeaturedCheckIn = async (place: FeaturedPlace) => {
+    setPendingFeaturedId(place.id);
+    setSuccess(null);
+    setErrorMsg(null);
     try {
-      const data = await loadActivities(debouncedSearch, selectedCity, venueType);
-      setActivities(data);
-      hasLoadedOnce.current = true;
-    } catch (err) {
-      console.error('Error loading places:', err);
-      setActivities([]);
+      const result = await checkInFeatured(place.id);
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          already_checked_in: 'You have already checked in here.',
+          too_far: `You need to be closer — you are ${result.distance_meters ?? '?'}m away.`,
+          completion_limit_reached: 'This activity has reached its completion limit.',
+          activity_not_available: 'This venue is no longer available.',
+          activity_not_found: 'This venue no longer exists.',
+          not_authenticated: 'Please sign in again.',
+        };
+        setErrorMsg(messages[result.error || ''] || 'Check-in failed.');
+        return;
+      }
+      setSuccess({
+        title: place.title,
+        points: result.points_awarded ?? place.points,
+        kind: 'featured',
+      });
+      setTimeout(() => setSuccess(null), 6000);
+      reloadFeatured();
+      reloadBudget();
+    } catch (err: any) {
+      handleGeoError(err);
     } finally {
-      setIsInitialLoading(false);
-      setIsRefetching(false);
+      setPendingFeaturedId(null);
     }
   };
 
-  // â”€â”€â”€ City handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleCityClick = (city: string) => {
-    setSelectedCity(city);
-    setShowCustomCity(false);
+  // ─── Self check-in ───────────────────────────────────────────────
+  const handleSelfCheckIn = async (place: GooglePlace) => {
+    setPendingDiscoverId(place.place_id);
+    setSuccess(null);
+    setErrorMsg(null);
+    try {
+      const result = await selfCheckIn({
+        place_id: place.place_id,
+        name: place.name,
+        address: place.address,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        types: place.types,
+      });
+
+      if (!result.ok) {
+        const messages: Record<string, string> = {
+          already_checked_in: 'You have already checked in here.',
+          no_active_org: 'You are not an active member of any organization.',
+          not_authenticated: 'Please sign in again.',
+        };
+        setErrorMsg(messages[result.error || ''] || 'Check-in failed.');
+        return;
+      }
+
+      setSelfCheckedInIds((prev) => new Set(prev).add(place.place_id));
+      setSuccess({
+        title: place.name,
+        points: result.points_awarded ?? 0,
+        kind: 'self',
+      });
+      setTimeout(() => setSuccess(null), 6000);
+      reloadBudget();
+    } catch (err: any) {
+      handleGeoError(err);
+    } finally {
+      setPendingDiscoverId(null);
+    }
   };
 
-  const openCustomCityInput = () => {
-    setShowCustomCity(true);
+  const handleGeoError = (err: any) => {
+    const msg = String(err?.message || err);
+    if (msg.includes('denied') || msg.includes('permission')) {
+      setErrorMsg('Location permission denied. Enable it in your browser to check in.');
+    } else if (msg.includes('timeout')) {
+      setErrorMsg('Could not get your location. Try again.');
+    } else {
+      setErrorMsg('Check-in failed. Try again.');
+    }
   };
 
-  const applyCustomCity = () => {
-    const trimmed = customCity.trim();
-    if (!trimmed) return;
-    setCustomCities((prev) =>
-      prev.includes(trimmed) ? prev : [...prev, trimmed]
+  // ─── Filter featured by search ───────────────────────────────────
+  const filteredFeatured = useMemo(() => {
+    if (!debouncedSearch.trim()) return featured;
+    const term = debouncedSearch.trim().toLowerCase();
+    return featured.filter(
+      (p) =>
+        p.title.toLowerCase().includes(term) ||
+        (p.location || '').toLowerCase().includes(term)
     );
-    setSelectedCity(trimmed);
-    setShowCustomCity(false);
-    setCustomCity('');
-  };
+  }, [featured, debouncedSearch]);
 
-  // â”€â”€â”€ Card handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleJoin = (id: string) => onJoinActivity?.(id);
-  const handleFlag = (id: string) => {
-    const reason = prompt('Why are you flagging this place?');
-    if (reason) onFlagActivity?.(id, reason);
-  };
-  const handleDetails = (activity: Activity) => {
-    alert(
-      `ðŸ“‹ ${activity.title}\n\n${activity.description || 'No description'}\n\nðŸ“ ${
-        activity.location || 'Global'
-      }\nâ­ ${activity.points} PTS`
-    );
-  };
-  const isSpotlight = (a: Activity) =>
-    !!a.is_featured && a.status === 'published';
+  // ─── Dedupe: discovered places already featured ──────────────────
+  const featuredPlaceIds = useMemo(
+    () => new Set(featured.map((f) => f.external_id).filter(Boolean)),
+    [featured]
+  );
 
-  // Map query â€” uses loaded activity locations or falls back to city
-  const mapQuery = (() => {
-    const locations = activities
-      .map((a) => a.location)
-      .filter(Boolean)
-      .slice(0, 10);
-    if (locations.length > 0) return locations.join(' OR ');
-    return selectedCity;
-  })();
+  if (cityLoading || featuredLoading) return <LoadingScreen />;
 
-  if (isInitialLoading) return <LoadingScreen />;
+  const budgetRemaining = budget?.remaining ?? 0;
 
   return (
-    <div className="space-y-5">
-      {isRefetching && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
-          <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-          Updatingâ€¦
-        </div>
-      )}
-
-      {/* â”€â”€â”€ Hero banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+    <div className="space-y-6">
+      {/* ─── Hero ─────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-6 text-white shadow-md">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider">
               <MapPin className="h-3.5 w-3.5" />
-              Places Hub
+              Places Near You
             </span>
-            <p className="mt-2 text-xs font-medium text-white/60">
-              {selectedCity} â€¢ {activities.length} Venues Pinned
-            </p>
-            <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
-              Places &amp; Venue Discovery
+            <h2 className="mt-3 text-2xl font-extrabold tracking-tight">
+              Explore, Visit &amp; Earn
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-white/70">
-              Explore activity spots, parks, climbing gyms, and wellness venues
-              around your team's locations to potentially suggest and curate for
-              employees.
+              Check in at featured venues to earn full points, or discover nearby
+              places and earn self check-in points.
             </p>
           </div>
-          <span className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold">
-            <MapPin className="h-4 w-4" />
-            {selectedCity}
-          </span>
+          {defaultCity && (
+            <button
+              onClick={() => saveCity('')}
+              className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20"
+            >
+              <MapPin className="h-4 w-4" />
+              {defaultCity}
+              <span className="text-[10px] opacity-60">Change</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* â”€â”€â”€ Search (own card) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ─── City inline banner (when no default city set) ────── */}
+      {!defaultCity && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+              <MapPin className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-amber-900">
+                Set your default city to discover places
+              </p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Pick a city to see venues around you. You can change it later.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {PRESET_CITIES.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => saveCity(c)}
+                    className="rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Success banner ───────────────────────────────────── */}
+      {success && (
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white">
+            <Check className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-emerald-800">
+              Checked in at {success.title}!
+            </p>
+            <p className="text-xs text-emerald-700">
+              {success.points > 0
+                ? `+${success.points} points added to your balance.`
+                : 'Visit recorded. Self check-in budget exhausted for this period.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Error banner ─────────────────────────────────────── */}
+      {errorMsg && (
+        <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white">
+            <X className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-rose-800">Check-in failed</p>
+            <p className="text-xs text-rose-700">{errorMsg}</p>
+          </div>
+          <button
+            onClick={() => setErrorMsg(null)}
+            className="text-rose-500 hover:text-rose-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ─── Search ───────────────────────────────────────────── */}
       <div className="rounded-2xl border bg-white p-4 shadow-sm">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search Google Places (e.g., Climbing, Park, Museum, Cafe)..."
-            className="pl-11 h-12 text-sm border-slate-200 bg-slate-50 focus:bg-white rounded-xl"
+            placeholder={
+              defaultCity
+                ? `Search venues and places in ${defaultCity}...`
+                : 'Set your city to start searching...'
+            }
+            disabled={!defaultCity}
+            className="pl-11 h-12 text-sm border-slate-200 bg-slate-50 focus:bg-white rounded-xl disabled:opacity-50"
           />
         </div>
       </div>
 
-      {/* â”€â”€â”€ City chips (own card) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="rounded-2xl border bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 p-4">
-          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-            <MapPin className="h-4 w-4" />
-            City:
-          </span>
-
-          {PRESET_CITIES.map((city) => {
-            const isActive = selectedCity === city;
-            return (
-              <button
-                key={city}
-                onClick={() => handleCityClick(city)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all',
-                  isActive
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                )}
-              >
-                {city === 'All Cities' ? (
-                  <Globe className="h-3.5 w-3.5" />
-                ) : (
-                  <MapPin className="h-3.5 w-3.5" />
-                )}
-                {city}
-              </button>
-            );
-          })}
-
-          {customCities.map((city) => {
-            const isActive = selectedCity === city;
-            return (
-              <button
-                key={city}
-                onClick={() => handleCityClick(city)}
-                title="Custom city"
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all',
-                  isActive
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                )}
-              >
-                <MapPin className="h-3.5 w-3.5" />
-                {city}
-              </button>
-            );
-          })}
-
-          <button
-            onClick={openCustomCityInput}
-            className={cn(
-              'ml-auto inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-semibold transition-all',
-              showCustomCity
-                ? 'border-indigo-600 bg-indigo-600 text-white'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-            )}
-          >
-            <span className="text-sm leading-none">+</span>
-            Custom City
-          </button>
+      {/* ─── SECTION 1: Featured for Your Team ────────────────── */}
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+            <Star className="h-4 w-4 fill-indigo-600" />
+          </div>
+          <h3 className="text-lg font-extrabold uppercase tracking-wider text-slate-900">
+            Featured for Your Team ({filteredFeatured.length})
+          </h3>
         </div>
 
-        {showCustomCity && (
-          <div className="flex flex-wrap items-center gap-3 border-t bg-slate-50 px-4 py-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Type any city:
-            </span>
-            <Input
-              value={customCity}
-              onChange={(e) => setCustomCity(e.target.value)}
-              placeholder="e.g., Toronto, Berlin, Sydney..."
-              className="h-9 w-64 text-sm"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  applyCustomCity();
-                }
-              }}
-              autoFocus
-            />
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 rounded-lg bg-slate-900 px-4 text-xs font-semibold hover:bg-slate-800"
-              onClick={applyCustomCity}
-            >
-              Add City
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-lg px-4 text-xs font-semibold"
-              onClick={() => {
-                setShowCustomCity(false);
-                setCustomCity('');
-              }}
-            >
-              Cancel
-            </Button>
+        {filteredFeatured.length === 0 ? (
+          <div className="rounded-2xl border border-dashed py-12 text-center">
+            <MapPin className="mx-auto h-10 w-10 text-slate-300" />
+            <p className="mt-3 text-base font-bold text-slate-800">
+              No featured places yet
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Ask your company admin to feature venues for your team.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {filteredFeatured.map((place) => {
+              const isPendingThis = pendingFeaturedId === place.id;
+              const hasCoords =
+                place.location_lat !== null && place.location_lng !== null;
+
+              return (
+                <div
+                  key={place.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <div className="relative h-44 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200">
+                    {place.image_url ? (
+                      <img
+                        src={place.image_url}
+                        alt={place.title}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-5xl">
+                        📍
+                      </div>
+                    )}
+                    <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
+                      <Coins className="h-3 w-3" />
+                      +{place.points} PTS
+                    </span>
+                    <span className="absolute left-3 top-3 rounded-lg bg-indigo-500 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+                      Featured
+                    </span>
+                  </div>
+
+                  <div className="flex flex-1 flex-col gap-2 p-4">
+                    <h3 className="line-clamp-2 text-base font-bold text-slate-900">
+                      {place.title}
+                    </h3>
+                    <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">
+                      {place.location || place.description || 'Featured venue'}
+                    </p>
+
+                    <div className="mt-auto space-y-2 pt-3">
+                      {!hasCoords && (
+                        <p className="text-[11px] text-slate-400">
+                          GPS check-in unavailable
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isPendingThis || !hasCoords}
+                        onClick={() => handleFeaturedCheckIn(place)}
+                        className={cn(
+                          'inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold transition-colors',
+                          !hasCoords
+                            ? 'cursor-not-allowed bg-slate-100 text-slate-400'
+                            : isPendingThis
+                            ? 'cursor-wait bg-slate-400 text-white'
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        )}
+                      >
+                        {isPendingThis ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Getting location…
+                          </>
+                        ) : (
+                          <>
+                            <MapPin className="h-4 w-4" />
+                            Check In &amp; Earn {place.points} pts
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* â”€â”€â”€ Venue Type (standalone row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-          <Filter className="h-3.5 w-3.5" />
-          Category:
-        </span>
-        {VENUE_TYPES.map((type) => {
-          const isActive = venueType === type;
-          return (
-            <button
-              key={type}
-              onClick={() => setVenueType(type)}
-              className={cn(
-                'rounded-full px-4 py-2 text-xs font-semibold transition-all',
-                isActive
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-              )}
-            >
-              {type}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* â”€â”€â”€ Interactive Places Map View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b px-5 py-3">
-          <div className="flex items-center gap-2">
-            <Map className="h-4 w-4 text-slate-700" />
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">
-              Interactive Places Map View
-            </h3>
-          </div>
-          <span className="text-xs font-semibold text-slate-600">
-            {activities.length}{' '}
-            {activities.length === 1 ? 'Venue' : 'Venues'} Pinned
-          </span>
-        </div>
-
-        <div className="p-4">
-          {googleMapsKey ? (
-            <div className="relative h-[420px] w-full overflow-hidden rounded-xl bg-slate-100">
-              <iframe
-                title="Places Map"
-                src={`https://www.google.com/maps/embed/v1/search?key=${googleMapsKey}&q=${encodeURIComponent(
-                  mapQuery
-                )}&zoom=12`}
-                className="h-full w-full border-0"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
-              />
-            </div>
-          ) : (
-            <div className="flex h-[420px] w-full flex-col items-center justify-center rounded-xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-8 text-center text-white">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
-                <MapPin className="h-8 w-8 text-white/80" />
+      {/* ─── SECTION 2: Discover more in <City> ─────────────────── */}
+      {defaultCity && (
+        <div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                <Globe className="h-4 w-4" />
               </div>
-              <h4 className="text-lg font-bold">
-                Google Maps Interactive Canvas
-              </h4>
-              <p className="mt-2 max-w-lg text-sm text-white/70">
-                Connect your{' '}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-amber-300">
-                  GOOGLE_MAPS_PLATFORM_KEY
-                </code>{' '}
-                in Secrets to render live satellite tiles and dynamic place pin
-                overlays!
-              </p>
+              <h3 className="text-lg font-extrabold uppercase tracking-wider text-slate-900">
+                Discover more in {defaultCity}
+              </h3>
+            </div>
+            <span className="text-xs font-semibold text-slate-500">
+              {discovered.length} places
+            </span>
+          </div>
+
+          {discoveredError && (
+            <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-700">
+              Could not load places: {discoveredError}
             </div>
           )}
-        </div>
-      </div>
 
-      {/* â”€â”€â”€ 2-column card grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {activities.length === 0 ? (
-        <div className="rounded-2xl border border-dashed py-16 text-center text-muted-foreground">
-          <p className="text-lg font-semibold">No places discovered yet</p>
-          <p className="text-sm">
-            Explore local venues and convert them into activities
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {activities.map((activity) => {
-            const interestMatch = userInterests.some((interest: string) =>
-              activity.interest_tags?.includes(interest)
-            );
-            const spotlight = isSpotlight(activity);
-            const isJoined = joinedActivityIds.includes(activity.id);
+          {discoveredLoading && discovered.length === 0 ? (
+            <div className="rounded-2xl border border-dashed py-16 text-center text-sm text-slate-500">
+              Loading places…
+            </div>
+          ) : discovered.length === 0 ? (
+            <div className="rounded-2xl border border-dashed py-12 text-center">
+              <p className="text-base font-bold text-slate-800">
+                No places found
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Try a different search term.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {discovered
+                .filter((p) => !featuredPlaceIds.has(p.place_id))
+                .map((place) => {
+                  const isPendingThis = pendingDiscoverId === place.place_id;
+                  const alreadyCheckedIn = selfCheckedInIds.has(place.place_id);
+                  const budgetExhausted = budgetRemaining <= 0;
+                  const photoUrl = place.photo_name
+                    ? `${SUPABASE_URL}/functions/v1/places-photo?name=${encodeURIComponent(
+                        place.photo_name
+                      )}&maxWidth=800`
+                    : null;
 
-            return (
-              <EmployeeActivityCard
-                key={activity.id}
-                activity={activity}
-                onJoin={() => handleJoin(activity.id)}
-                onFlag={() => handleFlag(activity.id)}
-                onDetails={() => handleDetails(activity)}
-                isFeatured={!!activity.is_featured}
-                isSpotlight={spotlight}
-                interestMatch={interestMatch}
-                isJoined={isJoined}
-              />
-            );
-          })}
+                  return (
+                    <div
+                      key={place.place_id}
+                      className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="relative h-40 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200">
+                        {photoUrl ? (
+                          <img
+                            src={photoUrl}
+                            alt={place.name}
+                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              const parent = (e.currentTarget as HTMLImageElement).parentElement;
+                              if (parent) {
+                                parent.classList.add('flex', 'items-center', 'justify-center', 'text-5xl');
+                                parent.textContent = placeIcon(place);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-5xl">
+                            {placeIcon(place)}
+                          </div>
+                        )}
+
+                        {place.rating !== null && (
+                          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg bg-white/95 px-2.5 py-1 text-[11px] font-bold text-slate-800 shadow-sm backdrop-blur-sm">
+                            <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                            {place.rating.toFixed(1)}
+                          </span>
+                        )}
+
+                        <span className="absolute left-3 top-3 rounded-lg bg-slate-900/85 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
+                          {budgetExhausted ? 'Budget used' : 'Earn 5 pts'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-1 flex-col gap-2 p-4">
+                        <h3 className="line-clamp-2 text-sm font-bold text-slate-900">
+                          {place.name}
+                        </h3>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">
+                          {place.address}
+                        </p>
+
+                        <div className="mt-auto pt-3">
+                          <button
+                            type="button"
+                            disabled={isPendingThis || alreadyCheckedIn}
+                            onClick={() => handleSelfCheckIn(place)}
+                            className={cn(
+                              'inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-colors',
+                              alreadyCheckedIn
+                                ? 'cursor-default bg-emerald-100 text-emerald-700'
+                                : isPendingThis
+                                ? 'cursor-wait bg-slate-300 text-slate-600'
+                                : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                            )}
+                          >
+                            {alreadyCheckedIn ? (
+                              <>
+                                <Check className="h-3.5 w-3.5" />
+                                Checked In
+                              </>
+                            ) : isPendingThis ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Getting location…
+                              </>
+                            ) : (
+                              <>
+                                <MapPin className="h-3.5 w-3.5" />
+                                Check In Here
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
     </div>

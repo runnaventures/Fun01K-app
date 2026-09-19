@@ -60,7 +60,6 @@ export function EmployeeSocialFeed({
   const [showCustomCity, setShowCustomCity] = useState(false);
   const [customCity, setCustomCity] = useState('');
 
-  // Debounce search
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
@@ -94,7 +93,11 @@ export function EmployeeSocialFeed({
     const organizationId = organizationMember?.organization_id;
     let query = supabase
       .from('activities')
-      .select('*')
+      .select(`
+        *,
+        interest:interest_id(id, name, icon, color),
+        sub_interest:sub_interest_id(id, name, slug)
+      `)
       .in('status', ['published', 'active'])
       .order('created_at', { ascending: false })
       .limit(50);
@@ -121,7 +124,6 @@ export function EmployeeSocialFeed({
     return (data || []) as Activity[];
   };
 
-  // â”€â”€â”€ City handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleCityClick = (city: string) => {
     setSelectedCity(city);
     setShowCustomCity(false);
@@ -142,7 +144,6 @@ export function EmployeeSocialFeed({
     setCustomCity('');
   };
 
-  // â”€â”€â”€ Card handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleJoin = (id: string) => onJoinActivity?.(id);
   const handleFlag = (id: string) => {
     const reason = prompt('Why are you flagging this activity?');
@@ -150,9 +151,9 @@ export function EmployeeSocialFeed({
   };
   const handleDetails = (activity: Activity) => {
     alert(
-      `ðŸ“‹ ${activity.title}\n\n${activity.description || 'No description'}\n\nðŸ“ ${
+      `📋 ${activity.title}\n\n${activity.description || 'No description'}\n\n📍 ${
         activity.location || 'Global'
-      }\nâ­ ${activity.points} PTS`
+      }\n⭐ ${activity.points} PTS`
     );
   };
   const isSpotlight = (a: Activity) =>
@@ -162,15 +163,13 @@ export function EmployeeSocialFeed({
 
   return (
     <div className="space-y-5">
-      {/* Refetch pill */}
       {isRefetching && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
           <span className="h-3 w-3 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-          Updatingâ€¦
+          Updating…
         </div>
       )}
 
-      {/* â”€â”€â”€ Hero banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-6 py-6 text-white shadow-md">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -179,7 +178,7 @@ export function EmployeeSocialFeed({
               Social Hub
             </span>
             <p className="mt-2 text-xs font-medium text-white/60">
-              {selectedCity} â€¢ {activities.length} Activities Found
+              {selectedCity} • {activities.length} Activities Found
             </p>
             <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
               Social Activities &amp; Community Feed
@@ -197,7 +196,6 @@ export function EmployeeSocialFeed({
         </div>
       </div>
 
-      {/* â”€â”€â”€ Remote Worker banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex items-start gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-950 px-5 py-4 text-white shadow-sm">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20">
           <Globe className="h-5 w-5 text-indigo-300" />
@@ -218,7 +216,6 @@ export function EmployeeSocialFeed({
         </div>
       </div>
 
-      {/* â”€â”€â”€ Search (own card) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="rounded-2xl border bg-white p-4 shadow-sm">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -231,7 +228,6 @@ export function EmployeeSocialFeed({
         </div>
       </div>
 
-      {/* â”€â”€â”€ City chips (own card) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="rounded-2xl border bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-3 p-4">
           <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -338,7 +334,6 @@ export function EmployeeSocialFeed({
         )}
       </div>
 
-      {/* â”€â”€â”€ Domain chips (standalone row) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
           Interest:
@@ -362,7 +357,6 @@ export function EmployeeSocialFeed({
         })}
       </div>
 
-      {/* â”€â”€â”€ 2-column card grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {activities.length === 0 ? (
         <div className="rounded-2xl border border-dashed py-16 text-center text-muted-foreground">
           <p className="text-lg font-semibold">No social activities found</p>

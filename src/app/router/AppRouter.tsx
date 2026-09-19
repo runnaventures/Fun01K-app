@@ -39,7 +39,7 @@ const ActivityDetailPage = lazy(() => import('@/features/employee/pages/Activity
 const ActivityHistoryPage = lazy(() => import('@/features/employee/pages/ActivityHistoryPage'));
 const ChallengesPage = lazy(() => import('@/features/shared/challenges/pages/ChallengesPage'));
 const FeedPage = lazy(() => import('@/features/shared/feed/pages/FeedPage'));
-const RewardsPage = lazy(() => import('@/features/company-admin/pages/RewardsPage'));
+const RewardsPage = lazy(() => import('@/features/employee/pages/RewardsPage'));
 const WalletPage = lazy(() => import('@/features/employee/pages/WalletPage'));
 const LeaderboardPage = lazy(() => import('@/features/employee/pages/LeaderboardPage'));
 const ProfilePage = lazy(() => import('@/features/employee/pages/ProfilePage'));

@@ -1,12 +1,56 @@
+// src/features/company-admin/rewards/pages/RewardsPage.tsx
+
 import { useState, useRef } from 'react';
+import {
+  Gift,
+  Plus,
+  Trash2,
+  Zap,
+  Globe,
+  Upload,
+  Wallet,
+  Coins,
+  Coffee,
+  Shirt,
+  Compass,
+  GraduationCap,
+  Calendar,
+  Sparkles,
+  Heart,
+  X,
+  Search,
+  LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
-import { useRewards, useCreateReward, useUpdateReward, useDeleteReward, useUpdateRewardStock, useUploadRewardImage, useRemoveRewardImage } from '@/features/company-admin/queries/rewardQueries';
+import {
+  useRewards,
+  useCreateReward,
+  useUpdateReward,
+  useDeleteReward,
+  useUpdateRewardStock,
+  useUploadRewardImage,
+  useRemoveRewardImage,
+} from '@/features/company-admin/queries/rewardQueries';
+import {
+  useOrganizationFunding,
+  useDepositFunding,
+} from '@/features/company-admin/queries/fundingQueries';
 import { rewardSourceService } from '@/features/company-admin/services/rewardSourceService';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
-import type { Reward, RewardCategory, RewardStatus, ExternalReward } from '@/features/company-admin/types/reward.types';
+import { GlobalApiCatalogModal } from '@/features/company-admin/rewards/components/GlobalApiCatalogModal';
+import { FundPoolModal } from '@/features/company-admin/rewards/components/FundPoolModal';
+import { cn } from '@/lib/utils';
+import type {
+  Reward,
+  RewardCategory,
+  RewardStatus,
+  ExternalReward,
+} from '@/features/company-admin/types/reward.types';
 
-const CATEGORY_OPTIONS = [
+// ─── Constants ────────────────────────────────────────────────────────
+
+const CATEGORY_OPTIONS: { value: RewardCategory; label: string }[] = [
   { value: 'gift_card', label: 'Gift Card' },
   { value: 'merchandise', label: 'Merchandise' },
   { value: 'experience', label: 'Experience' },
@@ -16,37 +60,41 @@ const CATEGORY_OPTIONS = [
   { value: 'charitable', label: 'Charitable' },
 ];
 
+const CATEGORY_ICONS: Record<RewardCategory, LucideIcon> = {
+  gift_card: Coffee,
+  merchandise: Shirt,
+  experience: Compass,
+  training: GraduationCap,
+  pto: Calendar,
+  company_benefit: Sparkles,
+  charitable: Heart,
+};
+
 const SOURCE_OPTIONS = [
   { value: 'manual', label: 'Manual', description: 'Create from scratch' },
   { value: 'tremendous', label: 'Tremendous', description: 'Gift cards & rewards' },
   { value: 'tangocard', label: 'Tango Card', description: 'Digital rewards' },
   { value: 'giftbit', label: 'Giftbit', description: 'Gift cards' },
   { value: 'blackhawk', label: 'BlackHawk', description: 'Gift cards & incentives' },
-];
+] as const;
 
-const STATUS_OPTIONS = [
-  { value: 'draft', label: 'Draft', description: 'Not visible to employees' },
-  { value: 'published', label: 'Published', description: 'Visible to employees' },
-  { value: 'active', label: 'Active', description: 'Available for redemption' },
-  { value: 'out_of_stock', label: 'Out of Stock', description: 'Temporarily unavailable' },
-  { value: 'archived', label: 'Archived', description: 'Permanently hidden' },
-];
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-gray-500/10 text-gray-600',
-  published: 'bg-blue-500/10 text-blue-600',
-  active: 'bg-green-500/10 text-green-600',
-  out_of_stock: 'bg-red-500/10 text-red-600',
-  archived: 'bg-gray-500/10 text-gray-600',
-};
-
-const STATUS_BADGE_LABELS: Record<string, string> = {
+const STATUS_BADGE_LABELS: Record<RewardStatus, string> = {
   draft: 'Draft',
   published: 'Published',
   active: 'Active',
   out_of_stock: 'Out of Stock',
   archived: 'Archived',
 };
+
+const STATUS_BADGE_STYLES: Record<RewardStatus, string> = {
+  draft: 'bg-slate-100 text-slate-600 border-slate-200',
+  published: 'bg-blue-50 text-blue-700 border-blue-200',
+  active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  out_of_stock: 'bg-rose-50 text-rose-700 border-rose-200',
+  archived: 'bg-slate-100 text-slate-500 border-slate-200',
+};
+
+// ─── Page ─────────────────────────────────────────────────────────────
 
 export default function RewardsPage() {
   const { user } = useAuth();
@@ -61,9 +109,15 @@ export default function RewardsPage() {
   const { mutate: uploadImage, isPending: isUploading } = useUploadRewardImage();
   const { mutate: removeImage } = useRemoveRewardImage();
 
+  // ─── Funding ────────────────────────────────────────────────────────
+  const { data: prepaidBalance = 0 } = useOrganizationFunding(organizationId);
+  const { mutateAsync: depositFunds } = useDepositFunding();
+
   const [isCreatingReward, setIsCreatingReward] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [rewardSource, setRewardSource] = useState<'manual' | 'tremendous' | 'tangocard' | 'giftbit' | 'blackhawk'>('manual');
+  const [rewardSource, setRewardSource] = useState<
+    'manual' | 'tremendous' | 'tangocard' | 'giftbit' | 'blackhawk'
+  >('manual');
   const [apiSearchQuery, setApiSearchQuery] = useState('');
   const [apiResults, setApiResults] = useState<ExternalReward[]>([]);
   const [isSearchingApi, setIsSearchingApi] = useState(false);
@@ -72,6 +126,8 @@ export default function RewardsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [isFundPoolOpen, setIsFundPoolOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -120,6 +176,9 @@ export default function RewardsPage() {
     setApiSearchQuery('');
     setSaveError(null);
     setSaveSuccess(false);
+    setTimeout(() => {
+      document.getElementById('reward-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const handleApiSearch = async () => {
@@ -127,12 +186,10 @@ export default function RewardsPage() {
       setSaveError('Please enter a search term');
       return;
     }
-
     if (rewardSource === 'manual') {
       setSaveError('Please select an API source');
       return;
     }
-
     setIsSearchingApi(true);
     setSaveError(null);
     try {
@@ -170,12 +227,9 @@ export default function RewardsPage() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      console.log('Image selected:', file.name, file.size, file.type);
       setImageFile(file);
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
+      reader.onloadend = () => setImagePreview(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -185,62 +239,45 @@ export default function RewardsPage() {
       setSaveError('No image selected');
       return;
     }
-    
     const rewardId = editingId;
     if (!rewardId) {
       setSaveError('Please save the reward first, then upload an image');
       return;
     }
-
     setSaveError(null);
-
-    console.log('Uploading image for reward:', rewardId);
     uploadImage(
-      {
-        rewardId,
-        file: imageFile,
-      },
+      { rewardId, file: imageFile },
       {
         onSuccess: (result) => {
-          console.log('Image uploaded successfully:', result);
           if (result) {
             setImagePreview('');
             setImageFile(null);
-            setFormData(prev => ({ ...prev, image_url: result }));
+            setFormData((prev) => ({ ...prev, image_url: result }));
             refetch();
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 3000);
           }
         },
-        onError: (error) => {
-          console.error('Upload error:', error);
-          setSaveError('Failed to upload image');
-        },
+        onError: () => setSaveError('Failed to upload image'),
       }
     );
   };
 
   const handleRemoveImage = async () => {
     if (!editingId) return;
-    
     removeImage(editingId, {
       onSuccess: () => {
         setFormData({ ...formData, image_url: '' });
         refetch();
       },
-      onError: (error) => {
-        console.error('Remove image error:', error);
-        setSaveError('Failed to remove image');
-      },
+      onError: () => setSaveError('Failed to remove image'),
     });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!user?.id) return;
 
-    // Always create as 'draft' initially
     const submitData = {
       organization_id: organizationId,
       title: formData.title,
@@ -250,32 +287,28 @@ export default function RewardsPage() {
       image_url: formData.image_url || undefined,
       stock: formData.stock ? parseInt(formData.stock) : undefined,
       source: rewardSource,
-      status: 'draft' as RewardStatus, // Always start as draft
+      status: 'active' as RewardStatus,
       created_by: user.id,
     };
 
     if (editingId) {
-      // For editing, preserve the existing status
-      const existingReward = rewards?.find(r => r.id === editingId);
-      updateReward({
-        id: editingId,
-        data: {
-          ...submitData,
-          status: existingReward?.status || 'draft',
+      const existingReward = rewards?.find((r) => r.id === editingId);
+      updateReward(
+        {
+          id: editingId,
+          data: { ...submitData, status: existingReward?.status || 'draft' },
         },
-      }, {
-        onSuccess: () => {
-          setEditingId(null);
-          setIsCreatingReward(false);
-          refetch();
-          setSaveSuccess(true);
-          setTimeout(() => setSaveSuccess(false), 3000);
-        },
-        onError: (error) => {
-          console.error('Update error:', error);
-          setSaveError('Failed to update reward');
-        },
-      });
+        {
+          onSuccess: () => {
+            setEditingId(null);
+            setIsCreatingReward(false);
+            refetch();
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+          },
+          onError: () => setSaveError('Failed to update reward'),
+        }
+      );
     } else {
       createReward(submitData, {
         onSuccess: (newReward) => {
@@ -284,59 +317,34 @@ export default function RewardsPage() {
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 3000);
           if (imageFile && newReward) {
-            uploadImage({
-              rewardId: newReward.id,
-              file: imageFile,
-            });
+            uploadImage({ rewardId: newReward.id, file: imageFile });
           }
         },
-        onError: (error) => {
-          console.error('Create error:', error);
-          setSaveError('Failed to create reward');
-        },
+        onError: () => setSaveError('Failed to create reward'),
       });
     }
   };
 
   const handleStatusChange = (id: string, status: RewardStatus) => {
-    const reward = rewards?.find(r => r.id === id);
+    const reward = rewards?.find((r) => r.id === id);
     if (!reward) return;
-
-    updateReward({
-      id,
-      data: {
-        ...reward,
-        status,
-      },
-    }, {
-      onSuccess: () => {
-        refetch();
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      },
-      onError: (error) => {
-        console.error('Status update error:', error);
-        setSaveError('Failed to update status');
-      },
-    });
+    updateReward(
+      { id, data: { ...reward, status } },
+      {
+        onSuccess: () => refetch(),
+        onError: () => setSaveError('Failed to update status'),
+      }
+    );
   };
 
   const handleDelete = (id: string) => {
     if (window.confirm('Are you sure you want to delete this reward?')) {
-      deleteReward(id, {
-        onSuccess: () => {
-          refetch();
-        },
-      });
+      deleteReward(id, { onSuccess: () => refetch() });
     }
   };
 
   const handleStockUpdate = (id: string, stock: number) => {
-    updateStock({ id, stock }, {
-      onSuccess: () => {
-        refetch();
-      },
-    });
+    updateStock({ id, stock }, { onSuccess: () => refetch() });
   };
 
   const handleCancel = () => {
@@ -350,409 +358,552 @@ export default function RewardsPage() {
     setSaveSuccess(false);
   };
 
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
+  if (isLoading) return <LoadingScreen />;
 
-  const categoryLabels: Record<RewardCategory, string> = {
-    gift_card: 'Gift Card',
-    merchandise: 'Merchandise',
-    experience: 'Experience',
-    training: 'Training',
-    pto: 'PTO',
-    company_benefit: 'Company Benefit',
-    charitable: 'Charitable',
-  };
+  const totalRewards = rewards?.length || 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Rewards</h1>
-          <p className="text-muted-foreground">
-            Create and manage rewards for your employees
-          </p>
+    <div className="space-y-6 pb-12">
+      {/* ─── Hero Panel ─────────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 px-8 py-7 text-white shadow-lg">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300 ring-1 ring-emerald-500/30">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Instant Digital E-Vouchers Active
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/70 ring-1 ring-white/10">
+                Sandbox Mode
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-indigo-200 ring-1 ring-indigo-400/30">
+                <Zap className="h-3 w-3" />
+                Auto-Issue Active
+              </span>
+            </div>
+
+            <h1 className="mt-4 flex items-center gap-2 text-2xl font-extrabold tracking-tight">
+              <Zap className="h-6 w-6 text-amber-300" />
+              Automated Rewards Platform Sync
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/70">
+              Digital e-gift vouchers and rewards are automatically imported and
+              issued instantly upon employee points redemption.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-end gap-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 backdrop-blur-sm">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+                  Prepaid Funding Balance
+                </p>
+                <p className="mt-1 text-2xl font-extrabold tracking-tight text-emerald-300">
+                  ${prepaidBalance.toFixed(2)}{' '}
+                  <span className="text-sm font-semibold text-emerald-400">USD</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFundPoolOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-600"
+              >
+                <Wallet className="h-4 w-4" />
+                Fund Pool
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsCatalogOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-indigo-700"
+            >
+              <Globe className="h-4 w-4" />
+              Global API Catalog
+            </button>
+          </div>
         </div>
-        {!isCreatingReward && !editingId && (
-          <button
-            onClick={handleCreate}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Create Reward
-          </button>
-        )}
       </div>
 
-      {/* Success/Error Messages */}
+      {/* ─── Section header + actions ───────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+            <Gift className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-extrabold uppercase tracking-wider text-slate-900">
+              Active Reward Catalog
+            </h2>
+            <p className="text-sm text-slate-500">
+              Currently listed rewards in the employee store for team points redemption.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsCatalogOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-700 transition-colors hover:bg-slate-200"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Import Gift Cards
+          </button>
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm transition-colors hover:bg-indigo-700"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Custom Reward
+          </button>
+          <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+            <span className="text-indigo-600">{totalRewards}</span>
+            <span className="text-slate-400">Items Listed</span>
+          </span>
+        </div>
+      </div>
+
+      {/* ─── Success / Error banners ────────────────────────────── */}
       {saveSuccess && (
-        <div className="p-3 bg-green-500/10 border border-green-500 rounded-md text-green-600 text-sm">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700">
           ✅ Reward saved successfully!
         </div>
       )}
       {saveError && (
-        <div className="p-3 bg-destructive/10 border border-destructive rounded-md text-destructive text-sm">
-          ❌ {saveError}
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700">
+          {saveError}
         </div>
       )}
 
-      {/* Create/Edit Form */}
+      {/* ─── Inline form (create / edit) ────────────────────────── */}
       {(isCreatingReward || editingId) && (
-        <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">
-            {editingId ? 'Edit Reward' : 'Create Reward'}
-          </h2>
+        <div
+          id="reward-form"
+          className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-indigo-900 to-indigo-800 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20">
+                <Gift className="h-5 w-5 text-indigo-200" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {editingId ? 'Edit Reward' : 'Create New Reward'}
+                </h3>
+                <p className="mt-0.5 text-xs text-indigo-300">
+                  {editingId
+                    ? 'Update the details below'
+                    : 'New rewards start as Draft until published'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="text-indigo-300 transition-colors hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1">Title *</label>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
+            {/* Left column */}
+            <div className="space-y-4 lg:col-span-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Reward Title <span className="text-rose-500">*</span>
+                </label>
                 <input
-                  type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="e.g., $10 Coffee Voucher"
                   required
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="$25 Amazon Gift Card"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1">Description *</label>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Description
+                </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  required
-                  rows={3}
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Describe the reward..."
+                  placeholder="Tell employees what they get and how to redeem it..."
+                  className="min-h-[90px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
 
-              {/* Image Upload Section */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1">Reward Image</label>
-                <div className="flex items-center gap-4">
-                  {(formData.image_url || imagePreview) ? (
-                    <div className="relative">
-                      <img
-                        src={imagePreview || formData.image_url}
-                        alt="Reward"
-                        className="h-32 w-32 object-cover rounded-lg border"
-                        onError={(e) => {
-                          console.error('Image load error:', e);
-                          (e.target as HTMLImageElement).src = '';
-                        }}
-                      />
-                      {!imagePreview && editingId && formData.image_url && (
-                        <button
-                          type="button"
-                          onClick={handleRemoveImage}
-                          className="absolute -top-2 -right-2 rounded-full bg-destructive p-1 text-destructive-foreground hover:bg-destructive/90 text-xs w-6 h-6 flex items-center justify-center"
-                        >
-                          ×
-                        </button>
-                      )}
-                      {imagePreview && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setImagePreview('');
-                            setImageFile(null);
-                          }}
-                          className="absolute -top-2 -right-2 rounded-full bg-destructive p-1 text-destructive-foreground hover:bg-destructive/90 text-xs w-6 h-6 flex items-center justify-center"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="h-32 w-32 rounded-lg border-2 border-dashed border-input flex items-center justify-center text-muted-foreground text-sm">
-                      No image
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleImageChange}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="rounded-md bg-secondary px-4 py-2 text-sm font-medium hover:bg-secondary/80 transition-colors"
-                    >
-                      Choose Image
-                    </button>
-                    {imageFile && (
-                      <button
-                        type="button"
-                        onClick={handleImageUpload}
-                        disabled={isUploading}
-                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                      >
-                        {isUploading ? 'Uploading...' : 'Upload Image'}
-                      </button>
-                    )}
-                    <p className="text-xs text-muted-foreground">Max 5MB. JPG, PNG, GIF</p>
-                  </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Category
+                  </label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) =>
+                      setFormData({ ...formData, category: e.target.value as RewardCategory })
+                    }
+                    className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {CATEGORY_OPTIONS.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Points Required <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.points_required}
+                    onChange={(e) =>
+                      setFormData({ ...formData, points_required: parseInt(e.target.value) || 0 })
+                    }
+                    min={1}
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Stock <span className="text-xs font-normal text-slate-400">(blank = unlimited)</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.stock}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    min={0}
+                    placeholder="Unlimited"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
                 </div>
               </div>
 
-              {/* Reward Source Selection */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1">Reward Source</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                  {SOURCE_OPTIONS.map((source) => (
+              {/* Source selector */}
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Reward Source
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {SOURCE_OPTIONS.map((opt) => (
                     <button
-                      key={source.value}
+                      key={opt.value}
                       type="button"
-                      onClick={() => {
-                        setRewardSource(source.value as typeof rewardSource);
-                        setApiResults([]);
-                        setApiSearchQuery('');
-                      }}
-                      className={`p-3 rounded-lg border text-center transition-all cursor-pointer ${
-                        rewardSource === source.value
-                          ? 'border-primary bg-primary/5 ring-2 ring-primary'
-                          : 'border-border hover:border-primary/50'
-                      }`}
+                      onClick={() => setRewardSource(opt.value)}
+                      className={cn(
+                        'rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-all',
+                        rewardSource === opt.value
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      )}
                     >
-                      <div className="text-sm font-medium">{source.label}</div>
-                      <div className="text-xs text-muted-foreground">{source.description}</div>
+                      <div>{opt.label}</div>
+                      <div className="mt-0.5 text-[10px] font-normal opacity-70">
+                        {opt.description}
+                      </div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* API Search Section */}
               {rewardSource !== 'manual' && (
-                <div className="md:col-span-2 p-4 bg-muted/20 rounded-lg border border-border">
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={apiSearchQuery}
-                      onChange={(e) => setApiSearchQuery(e.target.value)}
-                      placeholder={`Search ${rewardSource} rewards...`}
-                      className="flex-1 px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                      onKeyDown={(e) => e.key === 'Enter' && handleApiSearch()}
-                    />
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Search {rewardSource} catalog
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={apiSearchQuery}
+                        onChange={(e) => setApiSearchQuery(e.target.value)}
+                        placeholder="e.g., Amazon, Starbucks, Nike..."
+                        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={handleApiSearch}
-                      disabled={isSearchingApi || !apiSearchQuery.trim()}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 whitespace-nowrap"
+                      disabled={isSearchingApi}
+                      className="rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50"
                     >
-                      {isSearchingApi ? 'Searching...' : 'Search'}
+                      {isSearchingApi ? 'Searching…' : 'Search'}
                     </button>
                   </div>
-
-                  {/* Search Results */}
                   {apiResults.length > 0 && (
-                    <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
-                      {apiResults.map((result) => (
-                        <div key={result.id} className="flex items-start justify-between p-3 bg-background rounded-lg border hover:border-primary/30 transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              {result.image_url && (
-                                <img src={result.image_url} alt={result.title} className="w-10 h-10 rounded object-cover" />
-                              )}
-                              <div>
-                                <h4 className="font-medium">{result.title}</h4>
-                                <p className="text-sm text-muted-foreground line-clamp-2">{result.description}</p>
-                                {result.retail_price && (
-                                  <p className="text-xs text-muted-foreground">${result.retail_price} {result.currency || 'USD'}</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleImportApiResult(result)}
-                            className="ml-3 px-3 py-1.5 bg-primary/10 text-primary rounded-md hover:bg-primary/20 text-sm font-medium whitespace-nowrap transition-colors"
-                          >
-                            Import
-                          </button>
-                        </div>
+                    <div className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+                      {apiResults.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => handleImportApiResult(r)}
+                          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs hover:bg-slate-50"
+                        >
+                          <span className="font-semibold text-slate-800">{r.title}</span>
+                          <span className="text-slate-500">
+                            ${r.retail_price?.toFixed(2) ?? '—'}
+                          </span>
+                        </button>
                       ))}
                     </div>
                   )}
                 </div>
               )}
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Category *</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value as RewardCategory })}
-                  required
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+            {/* Right column — image */}
+            <div className="space-y-4 lg:col-span-1">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Reward Image
+                </label>
+
+                {imagePreview ? (
+                  <div className="relative mb-3">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="h-40 w-full rounded-xl object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImagePreview('');
+                        setImageFile(null);
+                      }}
+                      className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-xs text-white hover:bg-rose-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : formData.image_url ? (
+                  <div className="relative mb-3">
+                    <img
+                      src={formData.image_url}
+                      alt="Current"
+                      className="h-40 w-full rounded-xl object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-xs text-white hover:bg-rose-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mb-3 flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white text-xs text-slate-400">
+                    No image selected
+                  </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                 >
-                  {CATEGORY_OPTIONS.map((cat) => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
-              </div>
+                  {imagePreview || formData.image_url ? 'Change Image' : 'Choose Image'}
+                </button>
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Points Required *</label>
-                <input
-                  type="number"
-                  value={formData.points_required}
-                  onChange={(e) => setFormData({ ...formData, points_required: parseInt(e.target.value) || 0 })}
-                  required
-                  min="1"
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="100"
-                />
-              </div>
+                {imagePreview && editingId && (
+                  <button
+                    type="button"
+                    onClick={handleImageUpload}
+                    disabled={isUploading}
+                    className="mt-2 w-full rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {isUploading ? 'Uploading…' : 'Upload to Reward'}
+                  </button>
+                )}
 
-              <div>
-                <label className="block text-sm font-medium mb-1">Stock (Optional)</label>
-                <input
-                  type="number"
-                  value={formData.stock}
-                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                  min="0"
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="Unlimited"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Leave empty for unlimited stock</p>
-              </div>
-
-              <div className="md:col-span-2">
-                <p className="text-sm text-muted-foreground">
-                  ℹ️ New rewards are created as <span className="font-medium">Draft</span>. 
-                  You can publish them after creation.
+                <p className="mt-2 text-[10px] text-slate-400">
+                  Max 5MB · JPG, PNG, GIF, WEBP
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={isCreating}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                {isCreating ? 'Saving...' : editingId ? 'Update' : 'Create Reward'}
-              </button>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 lg:col-span-3">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {isCreating ? 'Saving…' : editingId ? 'Update Reward' : 'Create Reward'}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Rewards List */}
-      <div className="rounded-lg border bg-card shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Image</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Title</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Category</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Points</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Stock</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rewards?.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    No rewards found. Create your first reward by clicking the "Create Reward" button.
-                  </td>
-                </tr>
-              ) : (
-                rewards?.map((reward: Reward) => (
-                  <tr key={reward.id} className="border-b hover:bg-muted/50 transition-colors">
-                    <td className="px-4 py-3">
-                      {reward.image_url ? (
-                        <img
-                          src={reward.image_url}
-                          alt={reward.title}
-                          className="h-10 w-10 object-cover rounded"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs">
-                          No img
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-medium">{reward.title}</td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {categoryLabels[reward.category] || reward.category}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-semibold">{reward.points_required}</td>
-                    <td className="px-4 py-3 text-sm">
-                      {reward.stock !== null ? (
-                        <div className="flex items-center gap-2">
-                          <span>{reward.stock}</span>
-                          <button
-                            onClick={() => {
-                              const newStock = prompt('Enter new stock quantity:', String(reward.stock || 0));
-                              if (newStock !== null) {
-                                handleStockUpdate(reward.id, parseInt(newStock) || 0);
-                              }
-                            }}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            Edit
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Unlimited</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${STATUS_COLORS[reward.status] || 'bg-gray-500/10 text-gray-600'}`}>
-                          {STATUS_BADGE_LABELS[reward.status] || reward.status}
-                        </span>
-                        <select
-                          value={reward.status}
-                          onChange={(e) => handleStatusChange(reward.id, e.target.value as RewardStatus)}
-                          className="text-xs border border-input rounded-md bg-background px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring"
-                        >
-                          <option value="draft">Draft</option>
-                          <option value="published">Published</option>
-                          <option value="active">Active</option>
-                          <option value="out_of_stock">Out of Stock</option>
-                          <option value="archived">Archived</option>
-                        </select>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right space-x-2">
+      {/* ─── Reward grid ────────────────────────────────────────── */}
+      {totalRewards === 0 ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-white py-20 text-center">
+          <Gift className="mx-auto h-10 w-10 text-slate-300" />
+          <p className="mt-3 text-lg font-bold text-slate-800">No rewards yet</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Create your first reward to start rewarding employees.
+          </p>
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
+          >
+            <Plus className="h-4 w-4" />
+            Add Custom Reward
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {rewards?.map((reward: Reward) => {
+            const CategoryIcon = CATEGORY_ICONS[reward.category] || Gift;
+            const categoryLabel =
+              CATEGORY_OPTIONS.find((c) => c.value === reward.category)?.label ||
+              reward.category;
+            const hasImage = !!reward.image_url;
+
+            return (
+              <div
+                key={reward.id}
+                className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="relative h-44 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200">
+                  {hasImage ? (
+                    <img
+                      src={reward.image_url!}
+                      alt={reward.title}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <CategoryIcon className="h-16 w-16 text-slate-300" />
+                    </div>
+                  )}
+
+                  <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
+                    <Coins className="h-3 w-3" />
+                    {reward.points_required} PTS
+                  </span>
+                </div>
+
+                <div className="flex flex-1 flex-col gap-3 p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                      <CategoryIcon className="h-4 w-4" />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          'rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                          STATUS_BADGE_STYLES[reward.status]
+                        )}
+                      >
+                        {STATUS_BADGE_LABELS[reward.status]}
+                      </span>
+                      <select
+                        value={reward.status}
+                        onChange={(e) =>
+                          handleStatusChange(reward.id, e.target.value as RewardStatus)
+                        }
+                        className="cursor-pointer rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                        title="Change status"
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="published">Published</option>
+                        <option value="active">Active</option>
+                        <option value="out_of_stock">Out of Stock</option>
+                        <option value="archived">Archived</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
+                      {categoryLabel}
+                    </p>
+                    <h3 className="mt-1 line-clamp-1 text-base font-bold text-slate-900">
+                      {reward.title}
+                    </h3>
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
+                      {reward.description || 'No description provided.'}
+                    </p>
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-100">
+                      STOCK: {reward.stock !== null ? reward.stock : '∞'}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
                       <button
+                        type="button"
+                        onClick={() =>
+                          handleStockUpdate(reward.id, (reward.stock || 0) + 5)
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white transition-colors hover:bg-slate-800"
+                      >
+                        +5 Stock
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleEdit(reward)}
-                        className="text-sm text-primary hover:underline"
+                        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-700 transition-colors hover:bg-slate-50"
                       >
                         Edit
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDelete(reward.id)}
-                        className="text-sm text-destructive hover:underline"
+                        className="rounded-lg border border-rose-200 bg-white p-1.5 text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                        title="Delete reward"
                       >
-                        Delete
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {/* ─── Modals ─────────────────────────────────────────────── */}
+      <GlobalApiCatalogModal
+        open={isCatalogOpen}
+        onClose={() => setIsCatalogOpen(false)}
+        onImport={(ids) => console.log('Imported ids:', ids)}
+      />
+      <FundPoolModal
+        open={isFundPoolOpen}
+        onClose={() => setIsFundPoolOpen(false)}
+        currentBalance={prepaidBalance}
+        onConfirm={async (amount, method) => {
+          await depositFunds({ organizationId, amount });
+          console.log('Deposit recorded:', amount, method);
+        }}
+      />
     </div>
   );
 }

@@ -15,32 +15,22 @@ import { LucideIcon } from '@/components/ui/LucideIcon';
 interface AddActivityDialogProps {
   onActivityCreated?: () => void;
   children?: React.ReactNode;
-
-  /**
-   * Display mode:
-   * - "modal" (default): opens as a modal via DialogTrigger
-   * - "inline": renders the form inline (no modal wrapper). Requires `open` + `onClose`.
-   */
   mode?: 'modal' | 'inline';
-
-  /** Only used in inline mode — controls visibility */
   open?: boolean;
-
-  /** Only used in inline mode — called when user cancels */
   onClose?: () => void;
 }
 
-const DEFAULT_CATEGORIES = [
-  { id: 'sports', name: 'Sports' },
-  { id: 'wellness', name: 'Wellness' },
-  { id: 'learning', name: 'Learning' },
-  { id: 'social', name: 'Social' },
-  { id: 'creative', name: 'Creative' },
-  { id: 'professional', name: 'Professional' },
-  { id: 'community', name: 'Community' },
-  { id: 'outdoor', name: 'Outdoor' },
-  { id: 'hobby', name: 'Hobby' },
-];
+/* ─── Local types for taxonomy dropdowns ─── */
+interface InterestOption {
+  id: string;
+  name: string;
+  icon?: string | null;
+}
+interface SubInterestOption {
+  id: string;
+  interest_id: string;
+  name: string;
+}
 
 export function AddActivityDialog({
   onActivityCreated,
@@ -51,7 +41,6 @@ export function AddActivityDialog({
 }: AddActivityDialogProps) {
   const isInline = mode === 'inline';
 
-  // In modal mode this controls the Dialog. In inline mode the parent controls via `open`.
   const [isOpen, setIsOpen] = useState(false);
   const effectiveOpen = isInline ? !!open : isOpen;
 
@@ -61,17 +50,18 @@ export function AddActivityDialog({
   const [imagePreview, setImagePreview] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>(
-    DEFAULT_CATEGORIES
-  );
+  /* ─── Taxonomy state ─── */
+  const [interests, setInterests] = useState<InterestOption[]>([]);
+  const [subInterests, setSubInterests] = useState<SubInterestOption[]>([]);
   const [organizations, setOrganizations] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    interest_id: '',
+    sub_interest_id: '',
     points: 40,
     capacity: 0,
-    category_id: '',
     start_date: '',
     start_time: '',
     end_time: '',
@@ -82,26 +72,44 @@ export function AddActivityDialog({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Fetch dropdown data whenever the form becomes visible
+  /* ─── Fetch dropdown data on open ─── */
   useEffect(() => {
     if (effectiveOpen) {
-      fetchCategories();
+      fetchInterests();
+      fetchSubInterests();
       fetchOrganizations();
       setError(null);
       setSuccess(false);
     }
   }, [effectiveOpen]);
 
-  const fetchCategories = async () => {
+  const fetchInterests = async () => {
     try {
       const { data, error } = await supabase
-        .from('activity_categories')
-        .select('id, name')
-        .order('name');
+        .from('interests')
+        .select('id, name, icon')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
       if (error) throw error;
-      if (data && data.length > 0) setCategories(data);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
+      setInterests(data || []);
+    } catch (err) {
+      console.error('Error fetching interests:', err);
+    }
+  };
+
+  const fetchSubInterests = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sub_interests')
+        .select('id, interest_id, name')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setSubInterests(data || []);
+    } catch (err) {
+      console.error('Error fetching sub-interests:', err);
     }
   };
 
@@ -114,11 +122,12 @@ export function AddActivityDialog({
         .order('name');
       if (error) throw error;
       setOrganizations(data || []);
-    } catch (error) {
-      console.error('Error fetching organizations:', error);
+    } catch (err) {
+      console.error('Error fetching organizations:', err);
     }
   };
 
+  /* ─── Image handling ─── */
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -159,12 +168,13 @@ export function AddActivityDialog({
         .from('activity-images')
         .getPublicUrl(filePath);
       return urlData.publicUrl;
-    } catch (error) {
-      console.error('Error uploading image:', error);
+    } catch (err) {
+      console.error('Error uploading image:', err);
       return null;
     }
   };
 
+  /* ─── Submit ─── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -196,7 +206,8 @@ export function AddActivityDialog({
 
       let duration = 60;
       if (startAt && endAt) {
-        const diff = (new Date(endAt).getTime() - new Date(startAt).getTime()) / 60000;
+        const diff =
+          (new Date(endAt).getTime() - new Date(startAt).getTime()) / 60000;
         duration = Math.round(diff);
         if (duration < 5) duration = 5;
       }
@@ -223,8 +234,12 @@ export function AddActivityDialog({
         featured_at: new Date().toISOString(),
       };
 
-      if (formData.category_id) {
-        activityData.category_id = formData.category_id;
+      // Only send interest/sub_interest if selected
+      if (formData.interest_id) {
+        activityData.interest_id = formData.interest_id;
+      }
+      if (formData.sub_interest_id) {
+        activityData.sub_interest_id = formData.sub_interest_id;
       }
 
       const { data, error } = await supabase
@@ -248,18 +263,14 @@ export function AddActivityDialog({
       resetForm();
 
       setTimeout(() => {
-        // In inline mode the parent controls closing — call onClose
-        if (isInline) {
-          onClose?.();
-        } else {
-          setIsOpen(false);
-        }
+        if (isInline) onClose?.();
+        else setIsOpen(false);
         setSuccess(false);
         if (onActivityCreated) onActivityCreated();
       }, 1500);
-    } catch (error: any) {
-      console.error('Error creating activity:', error);
-      setError(error.message || 'Failed to create activity');
+    } catch (err: any) {
+      console.error('Error creating activity:', err);
+      setError(err.message || 'Failed to create activity');
     } finally {
       setIsLoading(false);
     }
@@ -269,9 +280,10 @@ export function AddActivityDialog({
     setFormData({
       title: '',
       description: '',
+      interest_id: '',
+      sub_interest_id: '',
       points: 40,
       capacity: 0,
-      category_id: '',
       start_date: '',
       start_time: '',
       end_time: '',
@@ -286,15 +298,17 @@ export function AddActivityDialog({
     resetForm();
     setError(null);
     setSuccess(false);
-    if (isInline) {
-      onClose?.();
-    } else {
-      setIsOpen(false);
-    }
+    if (isInline) onClose?.();
+    else setIsOpen(false);
   };
 
+  /* ─── Filtered sub-interests based on selected interest ─── */
+  const availableSubInterests = formData.interest_id
+    ? subInterests.filter((s) => s.interest_id === formData.interest_id)
+    : [];
+
   /* ═══════════════════════════════════════════════════════════════════
-     Form body — the same JSX for modal and inline mode
+     Form body
      ═══════════════════════════════════════════════════════════════════ */
   const formBody = (
     <div className="max-h-[50vh] overflow-y-auto px-5 py-4">
@@ -320,46 +334,99 @@ export function AddActivityDialog({
       <form
         id="add-activity-form"
         onSubmit={handleSubmit}
+        noValidate
         className="grid grid-cols-1 gap-5 lg:grid-cols-3"
       >
-        {/* LEFT COLUMN (2/3) — Content */}
+        {/* LEFT COLUMN (2/3) */}
         <div className="space-y-3 lg:col-span-2">
+          {/* Title */}
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              Activity Name <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <LucideIcon name="FileText" size={16} />
+              </div>
+              <Input
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+                placeholder="e.g., Wednesday Waterfront Run"
+                className="pl-9 py-2.5 text-sm"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Interest + Sub-Interest (linked pair) */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Activity Name <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                  <LucideIcon name="FileText" size={16} />
-                </div>
-                <Input
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="e.g., Wednesday Waterfront Run"
-                  className="pl-9 py-2.5 text-sm"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Category{' '}
-                <span className="text-xs font-normal text-slate-400">(optional)</span>
+                Interest{' '}
+                <span className="text-xs font-normal text-slate-400">
+                  (optional)
+                </span>
               </label>
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <LucideIcon name="Tag" size={16} />
                 </div>
                 <select
-                  value={formData.category_id}
-                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                  className="w-full appearance-none cursor-pointer rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  value={formData.interest_id}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      interest_id: e.target.value,
+                      sub_interest_id: '', // reset sub when interest changes
+                    })
+                  }
+                  className="w-full cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 >
-                  <option value="">Select a category</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
+                  <option value="">Select an interest</option>
+                  {interests.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.icon ? `${i.icon} ` : ''}
+                      {i.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="ChevronDown" size={16} />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Sub-Interest{' '}
+                <span className="text-xs font-normal text-slate-400">
+                  (optional)
+                </span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="Tag" size={16} />
+                </div>
+                <select
+                  value={formData.sub_interest_id}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sub_interest_id: e.target.value })
+                  }
+                  disabled={!formData.interest_id}
+                  className="w-full cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="">
+                    {!formData.interest_id
+                      ? 'Pick an interest first'
+                      : availableSubInterests.length === 0
+                      ? 'No sub-interests'
+                      : 'Select a sub-interest'}
+                  </option>
+                  {availableSubInterests.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
                     </option>
                   ))}
                 </select>
@@ -370,6 +437,7 @@ export function AddActivityDialog({
             </div>
           </div>
 
+          {/* Description */}
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-slate-700">
               Description
@@ -380,13 +448,16 @@ export function AddActivityDialog({
               </div>
               <textarea
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
                 placeholder="Tell employees why they should participate, what to expect, and details on how hobbies or socialization is stimulated."
                 className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
               />
             </div>
           </div>
 
+          {/* Date + Start + End */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -399,7 +470,9 @@ export function AddActivityDialog({
                 <Input
                   type="date"
                   value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, start_date: e.target.value })
+                  }
                   className="pl-9 py-2.5 text-sm"
                 />
               </div>
@@ -415,7 +488,9 @@ export function AddActivityDialog({
                 <Input
                   type="time"
                   value={formData.start_time}
-                  onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, start_time: e.target.value })
+                  }
                   className="pl-9 py-2.5 text-sm"
                 />
               </div>
@@ -431,13 +506,16 @@ export function AddActivityDialog({
                 <Input
                   type="time"
                   value={formData.end_time}
-                  onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, end_time: e.target.value })
+                  }
                   className="pl-9 py-2.5 text-sm"
                 />
               </div>
             </div>
           </div>
 
+          {/* Location + Organization */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -449,7 +527,9 @@ export function AddActivityDialog({
                 </div>
                 <Input
                   value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, location: e.target.value })
+                  }
                   placeholder="e.g., Lounge B"
                   className="pl-9 py-2.5 text-sm"
                 />
@@ -458,7 +538,9 @@ export function AddActivityDialog({
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Organization{' '}
-                <span className="text-xs font-normal text-slate-400">(optional)</span>
+                <span className="text-xs font-normal text-slate-400">
+                  (optional)
+                </span>
               </label>
               <div className="relative">
                 <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -469,7 +551,7 @@ export function AddActivityDialog({
                   onChange={(e) =>
                     setFormData({ ...formData, organization_id: e.target.value })
                   }
-                  className="w-full appearance-none cursor-pointer rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 >
                   <option value="">🌍 Global — All Organizations</option>
                   {organizations.map((org) => (
@@ -486,8 +568,9 @@ export function AddActivityDialog({
           </div>
         </div>
 
-        {/* RIGHT COLUMN (1/3) — Metadata + Image */}
+        {/* RIGHT COLUMN (1/3) */}
         <div className="space-y-3 lg:col-span-1">
+          {/* Points + Capacity */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -501,7 +584,10 @@ export function AddActivityDialog({
                   type="number"
                   value={formData.points}
                   onChange={(e) =>
-                    setFormData({ ...formData, points: parseInt(e.target.value) || 0 })
+                    setFormData({
+                      ...formData,
+                      points: parseInt(e.target.value) || 0,
+                    })
                   }
                   min={1}
                   className="pl-9 py-2.5 text-sm"
@@ -511,7 +597,10 @@ export function AddActivityDialog({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Capacity <span className="text-xs font-normal text-slate-400">(optional)</span>
+                Capacity{' '}
+                <span className="text-xs font-normal text-slate-400">
+                  (optional)
+                </span>
               </label>
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -521,19 +610,26 @@ export function AddActivityDialog({
                   type="number"
                   value={formData.capacity || ''}
                   onChange={(e) =>
-                    setFormData({ ...formData, capacity: parseInt(e.target.value) || 0 })
+                    setFormData({
+                      ...formData,
+                      capacity: parseInt(e.target.value) || 0,
+                    })
                   }
                   min={1}
+                  placeholder="Unlimited"
                   className="pl-9 py-2.5 text-sm"
                 />
               </div>
             </div>
           </div>
 
+          {/* Image */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <label className="mb-2 block text-sm font-semibold text-slate-700">
               Activity Image{' '}
-              <span className="text-xs font-normal text-slate-400">(optional)</span>
+              <span className="text-xs font-normal text-slate-400">
+                (optional)
+              </span>
             </label>
 
             {imagePreview ? (
@@ -574,16 +670,16 @@ export function AddActivityDialog({
             >
               {imagePreview ? 'Change Image' : 'Choose Image'}
             </button>
-            <p className="mt-2 text-xs text-slate-400">Max 5MB. JPG, PNG, GIF, WEBP</p>
+            <p className="mt-2 text-xs text-slate-400">
+              Max 5MB. JPG, PNG, GIF, WEBP
+            </p>
           </div>
         </div>
       </form>
     </div>
   );
 
-  /* ═══════════════════════════════════════════════════════════════════
-     Footer buttons — shared by both modes
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ─── Footer ─── */
   const footerButtons = (
     <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-3">
       <Button
@@ -625,22 +721,20 @@ export function AddActivityDialog({
     </div>
   );
 
-  /* ═══════════════════════════════════════════════════════════════════
-     INLINE mode — plain <div> wrapper, no modal
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ─── INLINE mode ─── */
   if (isInline) {
     if (!open) return null;
-
     return (
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        {/* Inline header */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-indigo-900 to-indigo-800 px-5 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20">
               <LucideIcon name="Calendar" size={20} className="text-indigo-300" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">Publish New Activity</h3>
+              <h3 className="text-lg font-bold text-white">
+                Publish New Activity
+              </h3>
               <p className="mt-0.5 text-xs text-indigo-300">
                 Create a custom activity for your employees
               </p>
@@ -654,16 +748,13 @@ export function AddActivityDialog({
             <LucideIcon name="X" size={20} />
           </button>
         </div>
-
         {formBody}
         {footerButtons}
       </div>
     );
   }
 
-  /* ═══════════════════════════════════════════════════════════════════
-     MODAL mode — original Dialog wrapper
-     ═══════════════════════════════════════════════════════════════════ */
+  /* ─── MODAL mode ─── */
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -692,7 +783,6 @@ export function AddActivityDialog({
             </button>
           </div>
         </div>
-
         {formBody}
         {footerButtons}
       </DialogContent>

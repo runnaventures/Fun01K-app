@@ -23,23 +23,25 @@ interface CreateActivityDialogProps {
   children?: React.ReactNode;
 }
 
+interface Interest {
+  id: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+}
+
+interface SubInterest {
+  id: string;
+  interest_id: string;
+  name: string;
+  slug?: string | null;
+}
+
 const VERIFICATION_METHODS = [
   { value: 'manual', label: 'Manual Approval' },
   { value: 'gps', label: 'GPS Location' },
   { value: 'qr', label: 'QR Code' },
   { value: 'host_approval', label: 'Host Approval' },
-];
-
-const DEFAULT_CATEGORIES = [
-  { id: 'sports', name: 'Sports' },
-  { id: 'wellness', name: 'Wellness' },
-  { id: 'learning', name: 'Learning' },
-  { id: 'social', name: 'Social' },
-  { id: 'creative', name: 'Creative' },
-  { id: 'professional', name: 'Professional' },
-  { id: 'community', name: 'Community' },
-  { id: 'outdoor', name: 'Outdoor' },
-  { id: 'hobby', name: 'Hobby' },
 ];
 
 export function CreateActivityDialog({
@@ -57,9 +59,12 @@ export function CreateActivityDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>(
-    DEFAULT_CATEGORIES
-  );
+
+  // ─── Taxonomy state ───
+  const [interests, setInterests] = useState<Interest[]>([]);
+  const [subInterests, setSubInterests] = useState<SubInterest[]>([]);
+  const [isLoadingTaxonomy, setIsLoadingTaxonomy] = useState(false);
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,7 +72,8 @@ export function CreateActivityDialog({
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category_id: '',
+    interest_id: '',
+    sub_interest_id: '',
     points: 50,
     capacity: 0,
     status: 'draft' as 'draft' | 'published' | 'active',
@@ -83,25 +89,54 @@ export function CreateActivityDialog({
       | 'host_approval',
   });
 
+  // ─── Load taxonomy when dialog opens ───
   useEffect(() => {
     if (effectiveOpen) {
-      fetchCategories();
+      fetchTaxonomy();
       setError(null);
       setSuccess(false);
     }
   }, [effectiveOpen]);
 
-  const fetchCategories = async () => {
+  const fetchTaxonomy = async () => {
+    setIsLoadingTaxonomy(true);
     try {
-      const { data, error } = await supabase
-        .from('activity_categories')
-        .select('id, name')
-        .order('name');
-      if (error) throw error;
-      if (data && data.length > 0) setCategories(data);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
+      const [interestRes, subInterestRes] = await Promise.all([
+        supabase
+          .from('interests')
+          .select('id, name, icon, color')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('sub_interests')
+          .select('id, interest_id, name, slug')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true }),
+      ]);
+
+      if (interestRes.error) throw interestRes.error;
+      if (subInterestRes.error) throw subInterestRes.error;
+
+      setInterests(interestRes.data || []);
+      setSubInterests(subInterestRes.data || []);
+    } catch (err) {
+      console.error('Error fetching taxonomy:', err);
+    } finally {
+      setIsLoadingTaxonomy(false);
     }
+  };
+
+  // ─── Derived: sub-interests for the currently selected interest ───
+  const availableSubInterests = formData.interest_id
+    ? subInterests.filter((s) => s.interest_id === formData.interest_id)
+    : [];
+
+  const handleInterestChange = (interestId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      interest_id: interestId,
+      sub_interest_id: '', // reset sub-interest whenever parent changes
+    }));
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,10 +229,12 @@ export function CreateActivityDialog({
         if (duration < 5) duration = 5;
       }
 
+      // ─── NEW: write interest_id + sub_interest_id instead of category_id ───
       const activityData: any = {
         title: formData.title.trim(),
         description: formData.description.trim() || null,
-        category_id: formData.category_id || null,
+        interest_id: formData.interest_id || null,
+        sub_interest_id: formData.sub_interest_id || null,
         organization_id: orgId,
         points: formData.points,
         duration,
@@ -256,7 +293,8 @@ export function CreateActivityDialog({
     setFormData({
       title: '',
       description: '',
-      category_id: '',
+      interest_id: '',
+      sub_interest_id: '',
       points: 50,
       capacity: 0,
       status: 'draft',
@@ -309,6 +347,7 @@ export function CreateActivityDialog({
       >
         {/* LEFT COLUMN (2/3) */}
         <div className="space-y-3 lg:col-span-2">
+          {/* Row 1: Title + Interest */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -331,7 +370,7 @@ export function CreateActivityDialog({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Category{' '}
+                Interest{' '}
                 <span className="text-xs font-normal text-slate-400">
                   (optional)
                 </span>
@@ -341,16 +380,18 @@ export function CreateActivityDialog({
                   <LucideIcon name="Tag" size={16} />
                 </div>
                 <select
-                  value={formData.category_id}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category_id: e.target.value })
-                  }
-                  className="w-full appearance-none cursor-pointer rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  value={formData.interest_id}
+                  onChange={(e) => handleInterestChange(e.target.value)}
+                  disabled={isLoadingTaxonomy}
+                  className="w-full appearance-none cursor-pointer rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-50"
                 >
-                  <option value="">Select a category</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
+                  <option value="">
+                    {isLoadingTaxonomy ? 'Loading…' : 'Select an interest'}
+                  </option>
+                  {interests.map((interest) => (
+                    <option key={interest.id} value={interest.id}>
+                      {interest.icon ? `${interest.icon} ` : ''}
+                      {interest.name}
                     </option>
                   ))}
                 </select>
@@ -359,6 +400,48 @@ export function CreateActivityDialog({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Row 1b: Sub-Interest (only enabled once an interest is picked) */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Sub-Interest{' '}
+                <span className="text-xs font-normal text-slate-400">
+                  (optional)
+                </span>
+              </label>
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="Tags" size={16} />
+                </div>
+                <select
+                  value={formData.sub_interest_id}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sub_interest_id: e.target.value })
+                  }
+                  disabled={!formData.interest_id || availableSubInterests.length === 0}
+                  className="w-full appearance-none cursor-pointer rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="">
+                    {!formData.interest_id
+                      ? 'Pick an interest first'
+                      : availableSubInterests.length === 0
+                      ? 'No sub-interests available'
+                      : 'Select a sub-interest'}
+                  </option>
+                  {availableSubInterests.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <LucideIcon name="ChevronDown" size={16} />
+                </div>
+              </div>
+            </div>
+            <div />
           </div>
 
           <div>

@@ -19,6 +19,7 @@ interface AdminFeaturedFeedProps {
   organizationId?: string;
   joinedActivityIds?: string[];
   isFormOpen?: boolean;
+  refreshKey?: number;
 }
 
 const CATEGORIES = [
@@ -37,6 +38,7 @@ export function AdminFeaturedFeed({
   onArchiveActivity,
   onAddNewActivity,
   isFormOpen = false,
+  refreshKey = 0,
 }: AdminFeaturedFeedProps) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +48,7 @@ export function AdminFeaturedFeed({
   useEffect(() => {
     fetchActivities();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, selectedCategory]);
+  }, [searchTerm, selectedCategory, refreshKey]);
 
   const fetchActivities = async () => {
     setIsLoading(true);
@@ -65,7 +67,9 @@ export function AdminFeaturedFeed({
 
       if (selectedCategory !== 'All Categories') {
         filtered = filtered.filter(
-          (a) => a.category?.name?.toLowerCase() === selectedCategory.toLowerCase()
+          (a) =>
+            a.interest?.name?.toLowerCase() === selectedCategory.toLowerCase() ||
+            a.category?.name?.toLowerCase() === selectedCategory.toLowerCase()
         );
       }
 
@@ -91,7 +95,6 @@ export function AdminFeaturedFeed({
 
   return (
     <div className="space-y-6">
-      {/* Header — hidden when the inline create form is open */}
       {!isFormOpen && (
         <div className="flex items-center justify-between">
           <div>
@@ -111,7 +114,6 @@ export function AdminFeaturedFeed({
         </div>
       )}
 
-      {/* Search & Filter */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[200px] flex-1">
           <LucideIcon
@@ -139,7 +141,6 @@ export function AdminFeaturedFeed({
         </select>
       </div>
 
-      {/* Activities Grid */}
       {activities.length === 0 ? (
         <div className="rounded-lg border py-12 text-center text-muted-foreground">
           <p className="text-lg">No featured activities</p>
@@ -155,14 +156,22 @@ export function AdminFeaturedFeed({
                 key={activity.id}
                 activity={activity}
                 onAdd={() => onAddActivity(activity.id)}
-                onFeature={() => {
-                  if (onFeatureActivity) onFeatureActivity(activity.id);
+                onFeature={async () => {
+                  if (onFeatureActivity) {
+                    await onFeatureActivity(activity.id);
+                    handleRefresh();
+                  }
                 }}
-                onArchive={() => {
-                  if (onArchiveActivity) onArchiveActivity(activity.id);
+                onArchive={async () => {
+                  if (onArchiveActivity) {
+                    await onArchiveActivity(activity.id);
+                    handleRefresh();
+                  }
                 }}
                 onEdit={() => {
-                  console.log('Edit activity:', activity.id);
+                  alert(
+                    'Company-admin edit flow is coming soon. For now, edit this activity from Platform Admin → Activities.'
+                  );
                 }}
                 onRefresh={handleRefresh}
                 isSpotlight={spotlight}

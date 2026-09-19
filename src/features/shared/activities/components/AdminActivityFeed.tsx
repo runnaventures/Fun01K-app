@@ -1,4 +1,4 @@
-﻿// src/features/activities/components/AdminActivityFeed.tsx
+// src/features/shared/activities/components/AdminActivityFeed.tsx
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { LucideIcon } from '@/components/ui/LucideIcon';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Activity } from '../types/activity.types';
 
 interface AdminActivityFeedProps {
@@ -29,7 +29,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
 
-  // Load activities
   useEffect(() => {
     if (activeTab === 'featured') {
       loadFeaturedActivities();
@@ -40,10 +39,16 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
     setIsLoading(true);
     try {
       const organizationId = organizationMember?.organization_id;
-      
+
       let query = supabase
         .from('activities')
-        .select('*')
+        .select(`
+          *,
+          organization:organization_id(id, name),
+          category:category_id(id, name, icon, color),
+          interest:interest_id(id, name, icon, color),
+          sub_interest:sub_interest_id(id, name, slug)
+        `)
         .eq('is_featured', true)
         .eq('status', 'active')
         .order('featured_at', { ascending: false });
@@ -62,7 +67,7 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
           .select('id')
           .ilike('name', `%${selectedCategory}%`)
           .maybeSingle();
-        
+
         if (categoryData) {
           query = query.eq('category_id', categoryData.id);
         }
@@ -71,29 +76,33 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
       const { data, error } = await query;
       if (error) throw error;
 
-      // Enrich with organization and category names
+      // organization and category are already joined above; keep this
+      // enrichment only for orgs if the join ever returns null
       if (data && data.length > 0) {
-        const orgIds = [...new Set(data.map((a: any) => a.organization_id).filter(Boolean))];
-        const catIds = [...new Set(data.map((a: any) => a.category_id).filter(Boolean))];
-        
-        const [orgResult, catResult] = await Promise.all([
-          orgIds.length > 0 
-            ? supabase.from('organizations').select('id, name').in('id', orgIds)
-            : { data: [] },
-          catIds.length > 0
-            ? supabase.from('activity_categories').select('id, name').in('id', catIds)
-            : { data: [] }
-        ]);
-        
-        const orgMap = Object.fromEntries((orgResult.data || []).map((o: any) => [o.id, o]));
-        const catMap = Object.fromEntries((catResult.data || []).map((c: any) => [c.id, c]));
-        
+        const orgIds = [
+          ...new Set(
+            data
+              .map((a: any) => a.organization_id)
+              .filter((id: any) => id && !data.find((x: any) => x.organization))
+          ),
+        ];
+
+        let orgMap: Record<string, any> = {};
+        if (orgIds.length > 0) {
+          const { data: orgResult } = await supabase
+            .from('organizations')
+            .select('id, name')
+            .in('id', orgIds as string[]);
+          orgMap = Object.fromEntries(
+            (orgResult || []).map((o: any) => [o.id, o])
+          );
+        }
+
         const enriched = data.map((item: any) => ({
           ...item,
-          organization: orgMap[item.organization_id] || null,
-          category: catMap[item.category_id] || null,
+          organization: item.organization || orgMap[item.organization_id] || null,
         }));
-        
+
         setActivities(enriched);
       } else {
         setActivities([]);
@@ -120,22 +129,30 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
     }
   };
 
-  const getCategoryIcon = (categoryName?: string) => {
-    switch (categoryName?.toLowerCase()) {
-      case 'wellness': return 'ðŸŒŸ';
-      case 'sports': return 'âš½';
-      case 'social': return 'ðŸ¤';
-      case 'hobby': return 'ðŸŽ¨';
-      case 'learning': return 'ðŸ“š';
-      default: return 'ðŸ“Œ';
+  // ─── Resolvers: prefer interest → sub_interest → legacy category ───
+  const getInterestIcon = (activity: any): string => {
+    if (activity?.interest?.icon) return activity.interest.icon;
+    if (activity?.category?.icon) return activity.category.icon;
+    return '📌';
+  };
+
+  const getInterestLabel = (activity: any): string => {
+    if (activity?.sub_interest?.name && activity?.interest?.name) {
+      return `${activity.interest.name} · ${activity.sub_interest.name}`;
     }
+    if (activity?.interest?.name) return activity.interest.name;
+    if (activity?.category?.name) return activity.category.name;
+    return 'Uncategorized';
   };
 
   const getSourceBadge = (source?: string) => {
     switch (source) {
-      case 'google_places': return <Badge variant="outline" className="text-xs">ðŸ“ Google Place</Badge>;
-      case 'meetup': return <Badge variant="outline" className="text-xs">ðŸ‘¥ Meetup</Badge>;
-      default: return null;
+      case 'google_places':
+        return <Badge variant="outline" className="text-xs">📍 Google Place</Badge>;
+      case 'meetup':
+        return <Badge variant="outline" className="text-xs">👥 Meetup</Badge>;
+      default:
+        return null;
     }
   };
 
@@ -145,7 +162,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
 
   return (
     <div className="space-y-6">
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="featured" className="text-xs">
@@ -159,9 +175,7 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
           </TabsTrigger>
         </TabsList>
 
-        {/* FEATURED - Admin View */}
         <TabsContent value="featured" className="mt-4">
-          {/* Add Activity Button */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold">Activities</h2>
@@ -175,7 +189,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
             </Button>
           </div>
 
-          {/* Ready to Engage Banner */}
           <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl p-6 mb-6 border border-primary/10 text-center">
             <h3 className="text-lg font-semibold">Ready to Engage the Workspace?</h3>
             <p className="text-sm text-muted-foreground">
@@ -184,7 +197,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
             </p>
           </div>
 
-          {/* Active Registry Header */}
           <div className="mb-4">
             <h3 className="font-semibold">Active Registry</h3>
             <p className="text-sm text-muted-foreground">
@@ -194,7 +206,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
             <p className="text-sm font-medium mt-1">{activities.length} Active Activities</p>
           </div>
 
-          {/* Search & Filter */}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="relative flex-1 min-w-[200px]">
               <LucideIcon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -216,7 +227,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
             </select>
           </div>
 
-          {/* Activities Cards Grid */}
           {activities.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground border rounded-lg">
               <p className="text-lg">No featured activities</p>
@@ -228,30 +238,28 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
                 <Card key={activity.id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex flex-col md:flex-row md:items-start gap-4">
-                      {/* Left: Image / Icon */}
                       <div className="w-full md:w-32 h-32 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                         {activity.image_url ? (
-                          <img 
-                            src={activity.image_url} 
-                            alt={activity.title} 
+                          <img
+                            src={activity.image_url}
+                            alt={activity.title}
                             className="w-full h-full object-cover"
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-4xl bg-primary/5">
-                            {getCategoryIcon(activity.category?.name)}
+                            {getInterestIcon(activity)}
                           </div>
                         )}
                       </div>
 
-                      {/* Middle: Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <Badge className="text-xs">
-                            {getCategoryIcon(activity.category?.name)} {activity.category?.name || 'Uncategorized'}
+                            {getInterestIcon(activity)} {getInterestLabel(activity)}
                           </Badge>
                           {activity.is_featured && (
                             <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 border-amber-200">
-                              ðŸŒŸ Spotlight
+                              🌟 Spotlight
                             </Badge>
                           )}
                           {getSourceBadge(activity.source)}
@@ -259,7 +267,7 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
                         </div>
 
                         <h4 className="font-semibold text-base">{activity.title}</h4>
-                        
+
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                           <span className="flex items-center gap-1">
                             <LucideIcon name="Coins" size={14} />
@@ -284,7 +292,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
                         </p>
                       </div>
 
-                      {/* Right: Actions */}
                       <div className="flex flex-row md:flex-col items-center md:items-end gap-2 mt-2 md:mt-0">
                         <Button
                           variant="outline"
@@ -310,7 +317,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
           )}
         </TabsContent>
 
-        {/* Social Tab */}
         <TabsContent value="social" className="mt-4">
           <div className="text-center py-12 text-muted-foreground">
             <p className="text-lg">Social Activities</p>
@@ -318,7 +324,6 @@ export function AdminActivityFeed({ tab = 'featured', onAddActivity }: AdminActi
           </div>
         </TabsContent>
 
-        {/* Places Tab */}
         <TabsContent value="places" className="mt-4">
           <div className="text-center py-12 text-muted-foreground">
             <p className="text-lg">Places Discovery</p>

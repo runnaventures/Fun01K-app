@@ -5,6 +5,8 @@ export interface Activity {
   title: string;
   description: string | null;
   category_id: string | null;
+  interest_id?: string | null;          // NEW — taxonomy FK
+  sub_interest_id?: string | null;      // NEW — taxonomy FK
   type_id: string | null;
   points: number;
   duration: number | null;
@@ -34,6 +36,20 @@ export interface Activity {
   organization?: { id: string; name: string; city?: string } | null;
   category?: { id: string; name: string; icon?: string; color?: string } | null;
   type?: { id: string; name: string } | null;
+
+  // ─── NEW: Taxonomy joins (interests + sub_interests) ───
+  interest?: {
+    id: string;
+    name: string;
+    icon?: string | null;
+    color?: string | null;
+  } | null;
+  sub_interest?: {
+    id: string;
+    name: string;
+    slug?: string | null;
+  } | null;
+
   is_global?: boolean;
   is_featured_by_company?: boolean;
   difficulty?: string;
@@ -67,6 +83,8 @@ export interface CreateActivityData {
   title: string;
   description?: string | null;
   category_id?: string | null;
+  interest_id?: string | null;          // NEW
+  sub_interest_id?: string | null;      // NEW
   type_id?: string | null;
   organization_id?: string | null;
   points: number;
@@ -101,6 +119,8 @@ export interface UpdateActivityData {
   title?: string;
   description?: string | null;
   category_id?: string | null;
+  interest_id?: string | null;          // NEW
+  sub_interest_id?: string | null;      // NEW
   type_id?: string | null;
   points?: number;
   difficulty?: 'easy' | 'medium' | 'hard' | string;
@@ -146,6 +166,8 @@ export interface ActivityParticipation {
 export interface ActivityFilters {
   search?: string;
   category_id?: string | null;
+  interest_id?: string | null;          // NEW
+  sub_interest_id?: string | null;      // NEW
   type_id?: string | null;
   status?: string | string[];
   visibility?: string | string[];

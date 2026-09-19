@@ -1,13 +1,13 @@
 // src/features/activities/services/activityService.ts
 
 import { supabase } from '@/lib/supabase';
-import type { 
-  Activity, 
-  ActivityCategory, 
+import type {
+  Activity,
+  ActivityCategory,
   ActivityType,
   CreateActivityData,
   UpdateActivityData,
-  ActivityParticipation
+  ActivityParticipation,
 } from '../types/activity.types';
 
 export class ActivityService {
@@ -22,7 +22,9 @@ export class ActivityService {
           *,
           organization:organization_id(name),
           category:category_id(name),
-          type:type_id(name)
+          type:type_id(name),
+          interest:interest_id(id, name, icon, color),
+          sub_interest:sub_interest_id(id, name, slug)
         `)
         .eq('status', 'active')
         .order('created_at', { ascending: false });
@@ -53,7 +55,9 @@ export class ActivityService {
           *,
           organization:organization_id(name),
           category:category_id(name),
-          type:type_id(name)
+          type:type_id(name),
+          interest:interest_id(id, name, icon, color),
+          sub_interest:sub_interest_id(id, name, slug)
         `)
         .eq('is_featured', true)
         .eq('status', 'active')
@@ -84,7 +88,9 @@ export class ActivityService {
           *,
           organization:organization_id(name),
           category:category_id(name),
-          type:type_id(name)
+          type:type_id(name),
+          interest:interest_id(id, name, icon, color),
+          sub_interest:sub_interest_id(id, name, slug)
         `)
         .eq('id', id)
         .single();
@@ -154,6 +160,8 @@ export class ActivityService {
           title: data.title,
           description: data.description || null,
           category_id: data.category_id || null,
+          interest_id: data.interest_id || null,
+          sub_interest_id: data.sub_interest_id || null,
           type_id: data.type_id || null,
           organization_id: data.organization_id || null,
           points: data.points,
@@ -196,6 +204,8 @@ export class ActivityService {
       if (data.title !== undefined) updateData.title = data.title;
       if (data.description !== undefined) updateData.description = data.description;
       if (data.category_id !== undefined) updateData.category_id = data.category_id;
+      if (data.interest_id !== undefined) updateData.interest_id = data.interest_id;
+      if (data.sub_interest_id !== undefined) updateData.sub_interest_id = data.sub_interest_id;
       if (data.type_id !== undefined) updateData.type_id = data.type_id;
       if (data.points !== undefined) updateData.points = data.points;
       if (data.difficulty !== undefined) updateData.difficulty = data.difficulty;
@@ -397,7 +407,9 @@ export class ActivityService {
             *,
             organization:organization_id(name),
             category:category_id(name),
-            type:type_id(name)
+            type:type_id(name),
+            interest:interest_id(id, name, icon, color),
+            sub_interest:sub_interest_id(id, name, slug)
           )
         `)
         .eq('profile_id', profileId)
