@@ -1,6 +1,6 @@
 ﻿// src/features/shared/activities/components/EmployeeSocialFeed.tsx
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
 import { Input } from '@/components/ui/Input';
@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 import { Users, MapPin, Search, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EmployeeActivityCard } from './EmployeeActivityCard';
+import { useActiveInterests } from '../hooks/useActiveInterests';
 import type { Activity } from '../types/activity.types';
 
 interface EmployeeSocialFeedProps {
@@ -37,8 +38,6 @@ const PRESET_CITIES = [
   'All Cities',
 ];
 
-const DOMAINS = ['All', 'Learning', 'Sports', 'Wellness', 'Hobby', 'Social'];
-
 export function EmployeeSocialFeed({
   loadActivities,
   onJoinActivity,
@@ -51,6 +50,13 @@ export function EmployeeSocialFeed({
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefetching, setIsRefetching] = useState(false);
   const hasLoadedOnce = useRef(false);
+
+  // Dynamic taxonomy chips
+  const { interests } = useActiveInterests();
+  const domains = useMemo(
+    () => ['All', ...interests.map((i) => i.name)],
+    [interests]
+  );
 
   const [selectedCity, setSelectedCity] = useState('Atlanta');
   const [selectedDomain, setSelectedDomain] = useState('All');
@@ -112,12 +118,12 @@ export function EmployeeSocialFeed({
       );
     }
     if (selectedDomain !== 'All') {
-      const { data: cat } = await supabase
-        .from('activity_categories')
+      const { data: interest } = await supabase
+        .from('interests')
         .select('id')
-        .ilike('name', `%${selectedDomain}%`)
+        .ilike('name', selectedDomain)
         .maybeSingle();
-      if (cat) query = query.eq('category_id', cat.id);
+      if (interest?.id) query = query.eq('interest_id', interest.id);
     }
     const { data, error } = await query;
     if (error) throw error;
@@ -338,7 +344,7 @@ export function EmployeeSocialFeed({
         <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
           Interest:
         </span>
-        {DOMAINS.map((domain) => {
+        {domains.map((domain) => {
           const isActive = selectedDomain === domain;
           return (
             <button

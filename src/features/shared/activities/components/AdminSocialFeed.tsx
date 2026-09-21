@@ -1,6 +1,6 @@
 ﻿// src/features/shared/activities/components/AdminSocialFeed.tsx
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
 import { Input } from '@/components/ui/Input';
@@ -9,6 +9,7 @@ import { LoadingScreen } from '@/components/feedback/LoadingScreen';
 import { Users, MapPin, Search, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AdminActivityCard } from './AdminActivityCard';
+import { useActiveInterests } from '../hooks/useActiveInterests';
 import type { Activity } from '../types/activity.types';
 
 interface AdminSocialFeedProps {
@@ -24,7 +25,7 @@ interface AdminSocialFeedProps {
   userInterests?: string[];
   organizationId?: string;
   joinedActivityIds?: string[];
-  refreshKey?: number;  // ← NEW
+  refreshKey?: number;
 }
 
 const CITIES = [
@@ -41,8 +42,6 @@ const CITIES = [
   '++ Custom City',
 ];
 
-const DOMAINS = ['All', 'Learning', 'Sports', 'Wellness', 'Hobby', 'Social'];
-
 export function AdminSocialFeed({
   loadActivities,
   onAddActivity,
@@ -56,6 +55,13 @@ export function AdminSocialFeed({
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefetching, setIsRefetching] = useState(false);
   const hasLoadedOnce = useRef(false);
+
+  // Dynamic taxonomy chips
+  const { interests } = useActiveInterests();
+  const domains = useMemo(
+    () => ['All', ...interests.map((i) => i.name)],
+    [interests]
+  );
 
   const [selectedCity, setSelectedCity] = useState('San Francisco');
   const [selectedDomain, setSelectedDomain] = useState('All');
@@ -111,6 +117,14 @@ export function AdminSocialFeed({
     if (debouncedSearch) {
       query = query.or(`title.ilike.%${debouncedSearch}%,description.ilike.%${debouncedSearch}%`);
     }
+    if (selectedDomain !== 'All') {
+      const { data: interest } = await supabase
+        .from('interests')
+        .select('id')
+        .ilike('name', selectedDomain)
+        .maybeSingle();
+      if (interest?.id) query = query.eq('interest_id', interest.id);
+    }
     const { data, error } = await query;
     if (error) throw error;
     return (data || []) as Activity[];
@@ -133,7 +147,6 @@ export function AdminSocialFeed({
     }
   };
 
-  // ─── CHANGED: await the parent handler, then refetch ───
   const handleFeature = async (id: string) => {
     if (onFeatureActivity) {
       await onFeatureActivity(id);
@@ -317,7 +330,7 @@ export function AdminSocialFeed({
           <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
             Domain:
           </span>
-          {DOMAINS.map((domain) => {
+          {domains.map((domain) => {
             const isActive = selectedDomain === domain;
             return (
               <button

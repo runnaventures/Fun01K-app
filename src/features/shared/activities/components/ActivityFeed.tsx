@@ -189,13 +189,16 @@ export function ActivityFeed({
         `title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`
       );
     }
+    // Taxonomy-driven filter: match by interest NAME from the chips
     if (selectedDomain !== 'All') {
-      const { data: cat } = await supabase
-        .from('activity_categories')
+      const { data: interest } = await supabase
+        .from('interests')
         .select('id')
-        .ilike('name', `%${selectedDomain}%`)
+        .ilike('name', selectedDomain)
         .maybeSingle();
-      if (cat) query = query.eq('category_id', cat.id);
+      if (interest?.id) {
+        query = query.eq('interest_id', interest.id);
+      }
     }
     if (
       selectedCity &&
@@ -389,7 +392,6 @@ export function ActivityFeed({
         </div>
       </div>
 
-      {/* ─── Featured ─────────────────────────────────────────── */}
       {activeTab === 'featured' &&
         (isCompanyAdmin ? (
           <AdminFeaturedFeed
@@ -414,7 +416,6 @@ export function ActivityFeed({
           />
         ))}
 
-      {/* ─── Social ───────────────────────────────────────────── */}
       {activeTab === 'social' &&
         (isCompanyAdmin ? (
           <AdminSocialFeed
@@ -436,7 +437,6 @@ export function ActivityFeed({
           />
         ))}
 
-      {/* ─── Places ───────────────────────────────────────────── */}
       {activeTab === 'places' &&
         (isCompanyAdmin ? (
           <AdminPlacesFeed

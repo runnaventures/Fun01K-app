@@ -1,6 +1,6 @@
 ﻿// src/features/shared/activities/components/EmployeePlacesFeed.tsx
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   MapPin,
   Search,
@@ -10,6 +10,7 @@ import {
   X,
   Star,
   Globe,
+  Filter,
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { LoadingScreen } from '@/components/feedback/LoadingScreen';
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useOrganization } from '@/app/providers/OrganizationProvider';
 import { useGooglePlaces, type GooglePlace } from '../hooks/useGooglePlaces';
+import { useActiveInterests } from '../hooks/useActiveInterests';
 import {
   useEmployeePlaces,
   useCheckIn,
@@ -58,6 +60,23 @@ export function EmployeePlacesFeed() {
   const { organizationMember } = useOrganization();
   const organizationId = organizationMember?.organization_id;
 
+  // Dynamic taxonomy chips
+  const { interests } = useActiveInterests();
+  const [venueType, setVenueType] = useState('All');
+
+  const venueTypes = useMemo(
+    () => ['All', ...interests.map((i) => i.name)],
+    [interests]
+  );
+
+  const keywordByInterestName = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const i of interests) {
+      map[i.name.toLowerCase()] = (i.places_keyword || i.name).toLowerCase();
+    }
+    return map;
+  }, [interests]);
+
   // ─── City ────────────────────────────────────────────────────────
   const {
     city: defaultCity,
@@ -65,7 +84,7 @@ export function EmployeePlacesFeed() {
     saveCity,
   } = useProfileCity(user?.id);
 
-  // ─── Featured (admin-curated) — may be empty; that's fine ────────
+  // ─── Featured (admin-curated) ────────────────────────────────────
   const {
     places: featured,
     isLoading: featuredLoading,
@@ -84,10 +103,16 @@ export function EmployeePlacesFeed() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  useMemo(() => {
+  useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 400);
     return () => clearTimeout(t);
   }, [searchTerm]);
+
+  const queryKeyword =
+    debouncedSearch.trim() ||
+    (venueType !== 'All'
+      ? keywordByInterestName[venueType.toLowerCase()]
+      : undefined);
 
   const {
     places: discovered,
@@ -95,7 +120,7 @@ export function EmployeePlacesFeed() {
     error: discoveredError,
   } = useGooglePlaces({
     city: defaultCity ?? undefined,
-    keyword: debouncedSearch.trim() || undefined,
+    keyword: queryKeyword,
     maxResults: 20,
     enabled: !!defaultCity,
   });
@@ -333,6 +358,33 @@ export function EmployeePlacesFeed() {
           />
         </div>
       </div>
+
+      {/* ─── Venue Type chips (dynamic) ───────────────────────── */}
+      {defaultCity && venueTypes.length > 1 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <Filter className="h-3.5 w-3.5" />
+            Venue Type:
+          </span>
+          {venueTypes.map((type) => {
+            const isActive = venueType === type;
+            return (
+              <button
+                key={type}
+                onClick={() => setVenueType(type)}
+                className={cn(
+                  'rounded-full px-4 py-2 text-xs font-semibold transition-all',
+                  isActive
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                )}
+              >
+                {type}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ─── SECTION 1: Featured for Your Team ────────────────── */}
       <div>

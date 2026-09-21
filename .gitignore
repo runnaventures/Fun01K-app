@@ -41,3 +41,4 @@ supabase/.temp
 capacitor.config.json
 android/
 ios/
+meetup-secrets.env

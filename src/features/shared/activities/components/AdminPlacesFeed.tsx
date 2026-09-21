@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useGooglePlaces, type GooglePlace } from '../hooks/useGooglePlaces';
+import { useActiveInterests } from '../hooks/useActiveInterests';
 
 interface AdminPlacesFeedProps {
   onFeatureActivity?: (activityId: string) => void;
@@ -45,17 +46,6 @@ const PRESET_CITIES = [
   'Chicago',
   'All Cities',
 ];
-
-const VENUE_TYPES = ['All', 'Wellness', 'Sports', 'Social', 'Hobby', 'Learning'];
-
-const VENUE_KEYWORDS: Record<string, string | undefined> = {
-  All: undefined,
-  Wellness: 'wellness spa yoga',
-  Sports: 'sports gym',
-  Social: 'bar restaurant social',
-  Hobby: 'hobby club',
-  Learning: 'library workshop',
-};
 
 const SUPABASE_URL =
   (import.meta.env.VITE_SUPABASE_URL as string | undefined) ??
@@ -82,6 +72,9 @@ export function AdminPlacesFeed({
   const { organizationMember } = useOrganization();
   const organizationId = organizationMember?.organization_id;
 
+  // Dynamic taxonomy
+  const { interests } = useActiveInterests();
+
   const [selectedCity, setSelectedCity] = useState('Atlanta');
   const [venueType, setVenueType] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,9 +90,27 @@ export function AdminPlacesFeed({
     return () => clearTimeout(t);
   }, [searchTerm]);
 
+  // Chip list: 'All' plus taxonomy interests
+  const venueTypes = useMemo(
+    () => ['All', ...interests.map((i) => i.name)],
+    [interests]
+  );
+
+  // Keyword mapping for Google Places (places_keyword || name)
+  const keywordByInterestName = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const i of interests) {
+      map[i.name.toLowerCase()] = (i.places_keyword || i.name).toLowerCase();
+    }
+    return map;
+  }, [interests]);
+
   const queryCity = selectedCity === 'All Cities' ? 'Atlanta' : selectedCity;
   const queryKeyword =
-    debouncedSearch.trim() || VENUE_KEYWORDS[venueType] || undefined;
+    debouncedSearch.trim() ||
+    (venueType !== 'All'
+      ? keywordByInterestName[venueType.toLowerCase()]
+      : undefined);
 
   const { places, isLoading, error } = useGooglePlaces({
     city: queryCity,
@@ -443,13 +454,13 @@ export function AdminPlacesFeed({
         )}
       </div>
 
-      {/* Venue type */}
+      {/* Venue type (dynamic from taxonomy) */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
           <Filter className="h-3.5 w-3.5" />
           Venue Type:
         </span>
-        {VENUE_TYPES.map((type) => {
+        {venueTypes.map((type) => {
           const isActive = venueType === type;
           return (
             <button
