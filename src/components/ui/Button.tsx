@@ -1,6 +1,7 @@
 // src/components/ui/Button.tsx
 
 import { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'default' | 'success';
@@ -12,14 +13,14 @@ interface ButtonProps {
   onClick?: () => void;
 }
 
-export function Button({ 
-  variant = 'default', 
-  size = 'md', 
-  children, 
-  className = '', 
+export function Button({
+  variant = 'default',
+  size = 'md',
+  children,
+  className = '',
   type = 'button',
   disabled = false,
-  onClick 
+  onClick,
 }: ButtonProps) {
   const variantClasses = {
     default: 'bg-primary text-primary-foreground hover:bg-primary/90',
@@ -42,7 +43,12 @@ export function Button({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={cn(
+        'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none',
+        variantClasses[variant],
+        sizeClasses[size],
+        className
+      )}
     >
       {children}
     </button>
