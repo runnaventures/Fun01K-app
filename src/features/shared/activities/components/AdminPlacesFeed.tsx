@@ -195,6 +195,9 @@ export function AdminPlacesFeed({
         place_id: place.place_id,
         external_source: 'google_places',
         external_id: place.place_id,
+        external_payload: place.photo_name
+          ? { photo_name: place.photo_name }
+          : null,
         source: 'google_places',
         created_by: user.id,
         start_at: null,
@@ -261,7 +264,7 @@ export function AdminPlacesFeed({
 
   // ─── Unfeature ───────────────────────────────────────────────────
   const handleUnfeature = async (featured: FeaturedRow) => {
-    if (!confirm('Remove this place from your employees\' catalog?')) return;
+    if (!confirm("Remove this place from your employees' catalog?")) return;
     setPendingId(featured.external_id);
     try {
       const { error: upErr } = await supabase

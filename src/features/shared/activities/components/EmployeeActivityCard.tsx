@@ -17,7 +17,11 @@ interface EmployeeActivityCardProps {
   isJoined?: boolean;
 }
 
-// ─── Interest resolvers: prefer interest → sub_interest → legacy category ───
+const SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ??
+  'https://bteqcbfdbsmszitaxuiy.supabase.co';
+
+// ─── Interest resolvers ──────────────────────────────────────────────
 
 function resolveInterestLabel(activity: any): string | null {
   if (activity?.sub_interest?.name && activity?.interest?.name) {
@@ -51,6 +55,33 @@ function resolveInterestStyle(activity: any): string {
     activity?.category?.name?.toLowerCase() ||
     '';
   return map[key] || 'bg-slate-500/10 text-slate-600';
+}
+
+function resolveImageUrl(activity: any): string | null {
+  if (activity?.image_url) return activity.image_url;
+
+  if (activity?.external_source === 'google_places') {
+    const photoName = activity?.external_payload?.photo_name;
+    if (photoName) {
+      return `${SUPABASE_URL}/functions/v1/places-photo?name=${encodeURIComponent(
+        photoName
+      )}&maxWidth=800`;
+    }
+  }
+
+  return null;
+}
+
+function resolveSourceBadge(
+  activity: any
+): { label: string; className: string } | null {
+  if (activity?.external_source === 'google_places') {
+    return {
+      label: 'Google Place',
+      className: 'border-sky-200 bg-sky-50 text-sky-700',
+    };
+  }
+  return null;
 }
 
 function formatShortDate(iso?: string | null): string {
@@ -100,6 +131,8 @@ export function EmployeeActivityCard({
   const interestLabel = resolveInterestLabel(activity);
   const interestStyle = resolveInterestStyle(activity);
   const interestIcon = resolveInterestIcon(activity);
+  const imageUrl = resolveImageUrl(activity);
+  const sourceBadge = resolveSourceBadge(activity);
   const organizerName =
     (activity as any).organization?.name || (activity as any).host_name || 'Fun01K';
 
@@ -115,7 +148,7 @@ export function EmployeeActivityCard({
         interestMatch && !isGoldCard && 'ring-2 ring-indigo-200'
       )}
     >
-      {/* ─── Organizer row (small, above image) ─── */}
+      {/* Organizer row */}
       <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
@@ -134,7 +167,7 @@ export function EmployeeActivityCard({
               Spotlight
             </span>
           )}
-          {interestLabel && (
+          {interestLabel ? (
             <span
               className={cn(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
@@ -144,18 +177,41 @@ export function EmployeeActivityCard({
               <span aria-hidden>{interestIcon}</span>
               {interestLabel}
             </span>
-          )}
+          ) : sourceBadge ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                sourceBadge.className
+              )}
+            >
+              {sourceBadge.label}
+            </span>
+          ) : null}
         </div>
       </div>
 
-      {/* ─── Hero image (rounded inset) ─── */}
+      {/* Hero image */}
       <div className="relative mx-4 overflow-hidden rounded-xl bg-slate-100">
         <div className="relative h-40 w-full">
-          {activity.image_url ? (
+          {imageUrl ? (
             <img
-              src={activity.image_url}
+              src={imageUrl}
               alt={activity.title}
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              loading="lazy"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                const parent = (e.currentTarget as HTMLImageElement).parentElement;
+                if (parent) {
+                  parent.classList.add(
+                    'flex',
+                    'items-center',
+                    'justify-center',
+                    'text-5xl'
+                  );
+                  parent.textContent = interestIcon;
+                }
+              }}
             />
           ) : (
             <div
@@ -171,7 +227,6 @@ export function EmployeeActivityCard({
           )}
         </div>
 
-        {/* Distance chip bottom-left */}
         {distance && (
           <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-lg bg-slate-900/85 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur-sm">
             <LucideIcon name="MapPin" size={10} />
@@ -179,12 +234,10 @@ export function EmployeeActivityCard({
           </span>
         )}
 
-        {/* Points chip top-right */}
         <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">
           +{points} PTS
         </span>
 
-        {/* Recommended chip top-left */}
         {interestMatch && !isFeatured && !isSpotlight && (
           <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
             <LucideIcon name="Sparkles" size={10} />
@@ -193,21 +246,18 @@ export function EmployeeActivityCard({
         )}
       </div>
 
-      {/* ─── Body ─── */}
+      {/* Body */}
       <div className="flex flex-1 flex-col gap-2 p-4">
-        {/* Title */}
         <h3 className="line-clamp-2 text-[15px] font-bold leading-snug text-slate-900">
           {activity.title}
         </h3>
 
-        {/* Description */}
         {activity.description && (
           <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">
             {activity.description}
           </p>
         )}
 
-        {/* Meta */}
         <div className="mt-auto space-y-1 pt-2 text-xs text-slate-600">
           {activity.start_at && (
             <div className="flex items-start gap-1.5">
@@ -235,7 +285,6 @@ export function EmployeeActivityCard({
           </div>
         </div>
 
-        {/* Action row */}
         <div className="mt-3 flex items-center gap-1.5 border-t border-slate-100 pt-3">
           <Button
             variant="ghost"

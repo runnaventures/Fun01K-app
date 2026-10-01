@@ -18,12 +18,12 @@ interface AdminActivityCardProps {
   isSpotlight?: boolean;
 }
 
-/* ─── Interest helpers (fall back to legacy category) ─── */
+const SUPABASE_URL =
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ??
+  'https://bteqcbfdbsmszitaxuiy.supabase.co';
 
-/**
- * Returns a badge style string based on the interest name.
- * Prefers `activity.interest`, falls back to `activity.category`.
- */
+// ─── Interest helpers (fall back to legacy category) ────────────────
+
 function getInterestStyle(name?: string | null): string {
   const map: Record<string, string> = {
     sports: 'bg-blue-500/10 text-blue-600 border-blue-200',
@@ -48,19 +48,12 @@ function getInterestIcon(name?: string | null): string {
     wellness: '🧘',
     learning: '📚',
     social: '🤝',
-    creative: '🎨',
-    professional: '💼',
-    community: '🌍',
     outdoor: '🏔️',
     hobby: '🎯',
   };
   return map[name?.toLowerCase() || ''] || '📌';
 }
 
-/**
- * Resolve the display name for an activity.
- * Priority: interest · sub-interest → interest → legacy category → Uncategorized
- */
 function resolveInterestLabel(activity: any): string | null {
   const interestName = activity?.interest?.name;
   const subName = activity?.sub_interest?.name;
@@ -72,16 +65,49 @@ function resolveInterestLabel(activity: any): string | null {
   return null;
 }
 
-/**
- * Resolve the icon for an activity.
- * Priority: interest.icon → interest name match → legacy category icon → 📌
- */
 function resolveInterestIcon(activity: any): string {
   if (activity?.interest?.icon) return activity.interest.icon;
   if (activity?.interest?.name) return getInterestIcon(activity.interest.name);
   if (activity?.category?.icon) return activity.category.icon;
   if (activity?.category?.name) return getInterestIcon(activity.category.name);
   return '📌';
+}
+
+/**
+ * Returns a URL for the card's image:
+ *  1. activity.image_url (manually uploaded / previously stored)
+ *  2. Live-proxied Google Places photo (from stored photo reference)
+ *  3. null (caller renders the icon fallback)
+ */
+function resolveImageUrl(activity: any): string | null {
+  if (activity?.image_url) return activity.image_url;
+
+  if (activity?.external_source === 'google_places') {
+    const photoName = activity?.external_payload?.photo_name;
+    if (photoName) {
+      return `${SUPABASE_URL}/functions/v1/places-photo?name=${encodeURIComponent(
+        photoName
+      )}&maxWidth=800`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns a source pill for externally-imported activities.
+ * Google Places activities get a small pill instead of "Uncategorized".
+ */
+function resolveSourceBadge(
+  activity: any
+): { label: string; className: string } | null {
+  if (activity?.external_source === 'google_places') {
+    return {
+      label: 'Google Place',
+      className: 'border-sky-200 bg-sky-50 text-sky-700',
+    };
+  }
+  return null;
 }
 
 function formatEventDate(iso?: string | null): string {
@@ -115,8 +141,9 @@ export function AdminActivityCard({
   const points = activity.points ?? 0;
   const interestLabel = resolveInterestLabel(activity);
   const interestIcon = resolveInterestIcon(activity);
-  const organizerName =
-    (activity as any).organization?.name || 'Global';
+  const imageUrl = resolveImageUrl(activity);
+  const sourceBadge = resolveSourceBadge(activity);
+  const organizerName = (activity as any).organization?.name || 'Global';
 
   const statusStyle: Record<string, string> = {
     draft: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -153,13 +180,27 @@ export function AdminActivityCard({
           : 'border-slate-200 shadow-sm'
       )}
     >
-      {/* ─────────────────────────────── IMAGE ─────────────────────────────── */}
+      {/* IMAGE */}
       <div className="relative h-52 w-full overflow-hidden bg-slate-100">
-        {activity.image_url ? (
+        {imageUrl ? (
           <img
-            src={activity.image_url}
+            src={imageUrl}
             alt={activity.title}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+              const parent = (e.currentTarget as HTMLImageElement).parentElement;
+              if (parent) {
+                parent.classList.add(
+                  'flex',
+                  'items-center',
+                  'justify-center',
+                  'text-6xl'
+                );
+                parent.textContent = interestIcon;
+              }
+            }}
           />
         ) : (
           <div
@@ -225,9 +266,9 @@ export function AdminActivityCard({
         )}
       </div>
 
-      {/* ─────────────────────────────── CONTENT ─────────────────────────────── */}
+      {/* CONTENT */}
       <CardContent className="space-y-3 p-5">
-        {/* Organizer row + interest badge */}
+        {/* Organizer row + interest or source badge */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600">
@@ -243,7 +284,6 @@ export function AdminActivityCard({
             />
           </div>
 
-          {/* ✅ Interest badge (replaces old category badge) */}
           {interestLabel ? (
             <span
               className={cn(
@@ -254,6 +294,15 @@ export function AdminActivityCard({
               )}
             >
               {interestLabel}
+            </span>
+          ) : sourceBadge ? (
+            <span
+              className={cn(
+                'shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
+                sourceBadge.className
+              )}
+            >
+              {sourceBadge.label}
             </span>
           ) : (
             <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
